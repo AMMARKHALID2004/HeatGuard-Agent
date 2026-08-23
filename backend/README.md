@@ -54,6 +54,20 @@ cd backend && uv run python -m unittest discover -v
 Stdlib `unittest` only — no test dependency to install — and pytest will collect both
 as-is if you add one later.
 
+### Live check against the real Groq API
+
+The suite above never leaves the machine, so it cannot tell you whether your `GROQ_API_KEY`
+actually works. This does:
+
+```bash
+cd backend && uv run python scripts/check_groq.py
+```
+
+It walks a synthetic heatmap through each risk band and prints the decision, so you see the
+thresholds firing end to end. It spends **no FortyGuard credits** — the heatmaps are
+hard-coded, which isolates one credential at a time. Exit code 0 means Groq reasoning and
+threshold enforcement both work; with no key set it tells you where to get one.
+
 ## The one endpoint that matters
 
 `POST /api/evaluate`
@@ -108,6 +122,8 @@ app/
 tests/
 ├── test_fortyguard.py    FortyGuardClient against httpx.MockTransport
 └── test_agent.py         HeatRiskAgent against a MockTransport-backed AsyncOpenAI
+scripts/
+└── check_groq.py         live Groq call, no FortyGuard credits spent
 ```
 
 ## Design notes
