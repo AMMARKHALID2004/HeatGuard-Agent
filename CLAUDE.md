@@ -17,7 +17,9 @@ and displayed on a live dashboard.
      synchronous) with a bounded retry count + exponential backoff, until
      `status == "Completed"` or timeout
   4. Sends the resulting heatmap data to Groq (free-tier LLM API, OpenAI-compatible,
-     model `llama-3.3-70b-versatile`) with a system prompt enforcing fixed risk
+     model `openai/gpt-oss-120b` — Groq retired the Llama family, so the
+     `llama-3.3-70b-versatile` this originally specified now 404s `model_not_found`)
+     with a system prompt enforcing fixed risk
      thresholds — do not let the LLM decide thresholds itself
   5. Parses/validates the LLM's JSON output against a Pydantic schema
   6. Returns the decision to the frontend; if `decision == "RESCHEDULE"`, also POSTs to
@@ -46,8 +48,9 @@ and displayed on a live dashboard.
 3. The original polling loop had no max retry count — FastAPI's poll loop must have a
    bounded number of attempts and a clear timeout error returned to the frontend
 4. LLM reasoning previously used a free OpenRouter model — use Groq's free tier
-   (OpenAI-compatible endpoint, `llama-3.3-70b-versatile`) instead, for speed and
-   reliability during judging, at no cost
+   (OpenAI-compatible endpoint, `openai/gpt-oss-120b`) instead, for speed and
+   reliability during judging, at no cost. Groq's lineup moves: verify the model id with
+   `uv run python scripts/check_groq.py`, which lists what the key can actually reach
 5. Never expose `FORTYGUARD_API_KEY`, `GROQ_API_KEY`, or `SLACK_WEBHOOK_URL` to the
    frontend — these live only in FastAPI's environment
 

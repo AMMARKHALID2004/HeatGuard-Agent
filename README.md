@@ -52,7 +52,7 @@ The dashboard is at http://localhost:3000, the API docs at http://localhost:8000
    with a **bounded** retry count and exponential backoff — returning a 504 rather than
    spinning forever.
 3. The heatmap is reduced to peak / average / sample temperatures **in Python**.
-4. Groq (`llama-3.3-70b-versatile`) writes the recommendation and reasoning.
+4. Groq (`openai/gpt-oss-120b`) writes the recommendation and reasoning.
 5. **The thresholds are code, not prompt:** `risk_level` and `decision` are re-derived
    server-side from the peak temperature, so a hallucinated classification cannot ship.
 6. A `RESCHEDULE` decision also posts to the Slack Incoming Webhook, best-effort.

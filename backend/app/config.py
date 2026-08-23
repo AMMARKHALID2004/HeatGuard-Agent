@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     # --- Upstream endpoints ---
     fortyguard_base_url: str = "https://api.fortyguard.com/v1"
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = "llama-3.3-70b-versatile"
+    # Groq retired the Llama family: `llama-3.3-70b-versatile` (what CLAUDE.md originally
+    # specified) now 404s with `model_not_found`. This is Groq's largest production chat
+    # model, and it supports the `json_object` response format the agent depends on.
+    # `openai/gpt-oss-20b` is the smaller sibling if free-tier rate limits bite.
+    groq_model: str = "openai/gpt-oss-120b"
+
 
     # --- Bounded polling of the FortyGuard async job ---
     poll_max_attempts: int = 15

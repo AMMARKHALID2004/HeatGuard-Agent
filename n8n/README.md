@@ -75,7 +75,8 @@ fixed in `/backend`:
 3. **Unbounded poll loop** — `If → Wait → Check Heatmap Status` has no attempt counter and
    no timeout, so a stuck job loops forever. The backend caps attempts and returns 504.
 4. **OpenRouter for reasoning** — the `OpenRouter Chat Model` node is replaced by Groq
-   (`llama-3.3-70b-versatile`) for speed and free-tier reliability during judging.
+   (`openai/gpt-oss-120b`; the `llama-3.3-70b-versatile` originally chosen was later retired
+   by Groq) for speed and free-tier reliability during judging.
 
 Two more worth knowing:
 

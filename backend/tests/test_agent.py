@@ -22,7 +22,7 @@ from app.risk import decision_for, reason_for, recommendation_for
 from app.services.slack import _build_message  # the alert body itself is under test
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "openai/gpt-oss-120b"
 API_KEY = "test-key"
 WHEN = datetime(2024, 7, 15, 14, 0)
 
