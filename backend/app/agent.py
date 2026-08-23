@@ -19,7 +19,10 @@ go-ahead on a 41 °C site is the one failure mode that actually matters:
   and an unparsed heatmap cannot back one.
 
 That leaves the model responsible for exactly what it is good at: the plain-language
-`recommendation` and `reason`.
+`recommendation` and `reason`. Those are kept verbatim only while they still describe the
+verdict that shipped — when a threshold override contradicts what the model argued for, its
+prose is replaced along with its verdict, because the dashboard card and the Slack alert
+print both side by side.
 
 A reply that is not valid JSON, or does not fit `AgentDecision`, is handed back once as a
 repair turn quoting the validation error. A second failure raises `AgentError`. The whole
@@ -183,6 +186,32 @@ def _reconcile(decision: AgentDecision, summary: dict[str, Any]) -> AgentDecisio
     return enforce_thresholds(decision)
 
 
+def _reply_content(completion: Any) -> str | None:
+    """The reply text out of a chat-completion envelope, or `None` if it is not one.
+
+    The SDK builds its response models without validating them, so a 200 that is not a chat
+    completion — a proxy's JSON error page, or whatever sits at a mistyped `GROQ_BASE_URL` —
+    arrives here as a plain string or an object with fields missing, rather than as an
+    exception. Returning `None` lets the caller name that specifically, instead of the
+    request dying on an `AttributeError` the router does not catch.
+    """
+    choices = getattr(completion, "choices", None)
+    if choices is None:
+        return None
+    if not choices:
+        # A real envelope that simply carried nothing. Distinct from the case above, and
+        # worth the one repair turn.
+        logger.warning("Groq returned no choices")
+        return ""
+    try:
+        choice = choices[0]
+        if choice.finish_reason == "length":
+            logger.warning("Groq reply hit the token limit and is probably truncated")
+        return choice.message.content or ""
+    except (AttributeError, TypeError, KeyError, IndexError):
+        return None
+
+
 class HeatRiskAgent:
     """Reason about one heatmap and return a validated `AgentDecision`.
 
@@ -316,12 +345,17 @@ class HeatRiskAgent:
             ) from exc
         except OpenAIError as exc:
             raise AgentError(f"could not reach Groq: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            # A 200 whose body is not JSON at all: an HTML error page from something in
+            # front of Groq, or an empty body. The SDK lets this through unwrapped, and
+            # `JSONDecodeError` is not an `OpenAIError`.
+            raise AgentError(f"Groq returned a 200 that was not JSON: {exc}") from exc
 
-        if not completion.choices:
-            logger.warning("Groq returned no choices")
-            return ""
+        content = _reply_content(completion)
+        if content is None:
+            raise AgentError(
+                "Groq returned HTTP 200 but not a chat completion — check GROQ_BASE_URL "
+                f"and anything proxying it. Body starts: {str(completion)[:200]!r}"
+            )
+        return content
 
-        choice = completion.choices[0]
-        if choice.finish_reason == "length":
-            logger.warning("Groq reply hit the token limit and is probably truncated")
-        return choice.message.content or ""

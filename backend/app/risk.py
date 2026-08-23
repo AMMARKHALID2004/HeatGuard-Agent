@@ -65,24 +65,61 @@ def reason_for(peak_temperature_c: float) -> str:
     )
 
 
+# Fallback guidance, used only when the model argued for a different verdict than the
+# thresholds reached. Its own `recommendation` was written to justify that other verdict, so
+# it cannot be shown beside the enforced one — the dashboard card and the Slack alert both
+# print it verbatim, and "no special heat precautions needed" under a RESCHEDULE header is
+# worse than no advice at all. Deliberately generic: this is a floor, not the model's job.
+_RECOMMENDATION_FOR_RISK: dict[RiskLevel, str] = {
+    "LOW": (
+        "Standard hot-weather practice is enough: drinking water at every work position, "
+        "breaks on the normal schedule, and closer watch on anyone new to working in heat."
+    ),
+    "MEDIUM": (
+        "Move the heaviest tasks to the coolest part of the window, add a shaded break each "
+        "hour, and keep water within arm's reach of the crew."
+    ),
+    "HIGH": (
+        "Move outdoor work out of this window. For anything that cannot be moved, work "
+        "short rotations in shade with someone watching the crew for heat illness."
+    ),
+}
+
+
+def recommendation_for(risk_level: RiskLevel) -> str:
+    """Deterministic guidance for `risk_level`, when the model's own cannot be shown."""
+    return _RECOMMENDATION_FOR_RISK[risk_level]
+
+
 def enforce_thresholds(decision: AgentDecision) -> AgentDecision:
     """Overwrite the model's `risk_level`/`decision` with the deterministic mapping.
 
     Applied on every path, including the no-reading one, so `risk_level` and `decision` can
     never contradict each other and a go-ahead can never rest on the model's own judgement.
+
+    When the mapping *disagrees* with what the model concluded, its `recommendation` and
+    `reason` are replaced too. They were written to argue for the verdict it picked, and the
+    dashboard and the Slack alert print them next to the verdict that actually shipped.
     """
     if decision.peak_temperature is None:
-        return decision.model_copy(
-            update={
-                "risk_level": UNKNOWN_RISK_LEVEL,
-                "decision": decision_for(UNKNOWN_RISK_LEVEL),
-                # Replaced, not appended: a model reason written about a temperature it was
-                # told to drop would sit next to a blank peak on the card.
-                "reason": UNKNOWN_REASON,
-            }
-        )
+        risk_level = UNKNOWN_RISK_LEVEL
+        # Replaced, not appended: a model reason written about a temperature it was told to
+        # drop would sit next to a blank peak on the card.
+        reason = UNKNOWN_REASON
+    else:
+        risk_level = classify(decision.peak_temperature)
+        reason = reason_for(decision.peak_temperature)
 
-    risk_level = classify(decision.peak_temperature)
-    return decision.model_copy(
-        update={"risk_level": risk_level, "decision": decision_for(risk_level)}
-    )
+    outcome = decision_for(risk_level)
+    updates: dict[str, object] = {"risk_level": risk_level, "decision": outcome}
+
+    if (decision.risk_level, decision.decision) != (risk_level, outcome):
+        updates["recommendation"] = recommendation_for(risk_level)
+        updates["reason"] = reason
+    elif decision.peak_temperature is None:
+        # The verdict matched, but there is still no temperature for the model's sentence to
+        # be about.
+        updates["reason"] = reason
+
+    return decision.model_copy(update=updates)
+

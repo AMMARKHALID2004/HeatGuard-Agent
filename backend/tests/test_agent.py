@@ -18,6 +18,8 @@ from openai import AsyncOpenAI
 
 from app.agent import MAX_ATTEMPTS, SDK_MAX_RETRIES, AgentError, HeatRiskAgent
 from app.config import Settings
+from app.risk import decision_for, reason_for, recommendation_for
+from app.services.slack import _build_message  # the alert body itself is under test
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "llama-3.3-70b-versatile"
@@ -124,8 +126,32 @@ class SlowGroq:
         return len(self.requests)
 
 
+class RawGroq:
+    """A handler that returns a body verbatim, including bodies that are not JSON.
+
+    `ScriptedGroq` serializes its replies, so it cannot express the 200s that matter here:
+    a proxy's HTML error page, an empty body, or JSON that is not a chat completion.
+    """
+
+    def __init__(self, body: str | bytes, *, content_type: str = "application/json"):
+        self.body = body.encode() if isinstance(body, str) else body
+        self.content_type = content_type
+        self.requests: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        # A fresh response each call: httpx marks a body as read once it is consumed.
+        return httpx.Response(
+            200, content=self.body, headers={"content-type": self.content_type}
+        )
+
+    @property
+    def call_count(self) -> int:
+        return len(self.requests)
+
+
 class AgentTestCase(unittest.IsolatedAsyncioTestCase):
-    def build(self, groq: ScriptedGroq, **setting_overrides: Any) -> HeatRiskAgent:
+    def build(self, groq: Any, **setting_overrides: Any) -> HeatRiskAgent:
         http = httpx.AsyncClient(transport=httpx.MockTransport(groq))
         self.addAsyncCleanup(http.aclose)
         # max_retries=0 so the SDK's own transport retries cannot blur call counts; the
@@ -309,6 +335,74 @@ class ThresholdEnforcementTests(AgentTestCase):
 
         self.assertIsNone(decision.peak_temperature)
         self.assertIsNone(decision.average_temperature)
+
+
+class ProseConsistencyTests(AgentTestCase):
+    """Enforcing the verdict is only half the job: the words shown next to it must agree.
+
+    `recommendation` and `reason` are printed verbatim on the dashboard card and inside the
+    Slack alert. A reply that copied the temperatures faithfully but reasoned to the wrong
+    band leaves `_reconcile` with nothing to correct, so without this the alert header says
+    RESCHEDULE while the guidance underneath it says the opposite.
+    """
+
+    # Faithful temperatures, wrong verdict — the case that slips past every other guard.
+    GO_AHEAD_AT_41C = {
+        "risk_level": "LOW",
+        "decision": "PROCEED",
+        "recommendation": "Conditions are comfortable today. Run the full pour as "
+                          "scheduled, no special heat precautions needed.",
+        "reason": "Peak of 41.2 C is below the 30 C threshold, so risk is low.",
+    }
+
+    async def test_an_overridden_verdict_takes_the_models_prose_with_it(self):
+        groq = ScriptedGroq(ok(decision_json(**self.GO_AHEAD_AT_41C)))
+        agent = self.build(groq)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+
+        self.assertEqual(decision.risk_level, "HIGH")
+        self.assertEqual(decision.recommendation, recommendation_for("HIGH"))
+        self.assertEqual(decision.reason, reason_for(41.2))
+        self.assertNotIn("no special heat precautions", decision.recommendation)
+        self.assertNotIn("below", decision.reason)
+
+    async def test_a_faithful_reply_keeps_the_models_own_recommendation(self):
+        """The model's prose is the point of having one — it is only dropped when wrong."""
+        mine = "Start at 05:30, rotate crews every 20 minutes, and park the ice chest on deck."
+        groq = ScriptedGroq(ok(decision_json(recommendation=mine)))
+        agent = self.build(groq)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+
+        self.assertEqual(decision.recommendation, mine)
+
+    async def test_the_slack_alert_never_contradicts_its_own_headline(self):
+        """The alert is the one surface a supervisor reads without opening the dashboard."""
+        groq = ScriptedGroq(ok(decision_json(**self.GO_AHEAD_AT_41C)))
+        agent = self.build(groq)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+        body = json.dumps(_build_message(decision))
+
+        self.assertIn("RESCHEDULE", body)
+        self.assertNotIn("no special heat precautions", body)
+        self.assertNotIn("risk is low", body)
+
+    async def test_whichever_band_the_model_misses_the_guidance_matches_the_verdict(self):
+        for heatmap, expected in ((HOT, "HIGH"), (WARM, "MEDIUM"), (MILD, "LOW")):
+            with self.subTest(expected=expected):
+                # Always claim the band the thresholds will not reach.
+                wrong = "LOW" if expected != "LOW" else "HIGH"
+                groq = ScriptedGroq(
+                    ok(decision_json(risk_level=wrong, decision=decision_for(wrong)))
+                )
+                agent = self.build(groq)
+
+                decision = await agent.assess(heatmap, date_time=WHEN)
+
+                self.assertEqual(decision.risk_level, expected)
+                self.assertEqual(decision.recommendation, recommendation_for(expected))
 
 
 class UnmeasurableAreaTests(AgentTestCase):
@@ -500,6 +594,54 @@ class ApiErrorTests(AgentTestCase):
             await agent.assess(HOT, date_time=WHEN)
 
         self.assertEqual(groq.call_count, 2)
+
+
+class MalformedEnvelopeTests(AgentTestCase):
+    """A 200 that is not a chat completion must still come out as `AgentError` -> 502.
+
+    The SDK builds its response models without validating them, so these arrive as a plain
+    string or an object with fields missing rather than as an exception. `evaluate.py` only
+    catches `AgentError`, so anything else here is an unhandled 500 traceback at the one
+    moment the dashboard is on screen. The realistic trigger is a mistyped `GROQ_BASE_URL`
+    or a captive proxy answering 200 with its own page.
+    """
+
+    CASES = {
+        "html error page": ("<html><body>502 Bad Gateway</body></html>", "text/html"),
+        "plain text": ("Service Unavailable", "text/plain"),
+        "empty body": ("", "application/json"),
+        "json, but not an envelope": ('{"error": "rate limited"}', "application/json"),
+        "envelope with null choices": (
+            '{"id": "c", "object": "chat.completion", "created": 0, "choices": null}',
+            "application/json",
+        ),
+    }
+
+    async def test_a_200_that_is_not_a_chat_completion_raises_agent_error(self):
+        for label, (body, content_type) in self.CASES.items():
+            with self.subTest(reply=label):
+                agent = self.build(RawGroq(body, content_type=content_type))
+
+                with self.assertRaises(AgentError):
+                    await agent.assess(HOT, date_time=WHEN)
+
+    async def test_the_error_says_where_to_look(self):
+        agent = self.build(RawGroq("<html>nope</html>", content_type="text/html"))
+
+        with self.assertRaises(AgentError) as caught:
+            await agent.assess(HOT, date_time=WHEN)
+
+        self.assertIn("GROQ_BASE_URL", str(caught.exception))
+
+    async def test_a_non_envelope_earns_no_repair_turn(self):
+        """A body the model never wrote will not be fixed by asking the model again."""
+        groq = RawGroq('{"error": "rate limited"}')
+        agent = self.build(groq)
+
+        with self.assertRaises(AgentError):
+            await agent.assess(HOT, date_time=WHEN)
+
+        self.assertEqual(groq.call_count, 1)
 
 
 class DeadlineTests(AgentTestCase):

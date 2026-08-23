@@ -41,7 +41,7 @@ Common uv commands:
 cd backend && uv run python -m unittest discover -v
 ```
 
-54 tests, no network. Both suites drive the *real* client code against scripted replies via
+61 tests, no network. Both suites drive the *real* client code against scripted replies via
 `httpx.MockTransport`, so nothing is stubbed and no request leaves the machine:
 
 - `tests/test_fortyguard.py` — `FortyGuardClient`: the success path (including the exact
@@ -49,8 +49,10 @@ cd backend && uv run python -m unittest discover -v
 - `tests/test_agent.py` — `HeatRiskAgent`. The mock transport is injected into a real
   `AsyncOpenAI` client (`http_client=`), so the SDK's own serialization, auth header, and
   envelope parsing all execute. Covers the request Groq actually receives, threshold
-  enforcement over a hallucinated go-ahead, the unmeasurable-area fail-safe, the reasoning
-  deadline, the single repair turn, and the API-error paths.
+  enforcement over a hallucinated go-ahead, prose that would contradict the enforced verdict,
+  the unmeasurable-area fail-safe, the reasoning deadline, the single repair turn, a 200 that
+  is not a chat completion at all, and the API-error paths.
+
 
 Stdlib `unittest` only — no test dependency to install — and pytest will collect both
 as-is if you add one later.
@@ -103,12 +105,14 @@ Error mapping — the dashboard can rely on these:
 | Status | Meaning |
 | ------ | ------- |
 | 422 | AOI ring or `date_time` failed validation |
-| 502 | FortyGuard or Groq rejected the call, returned something unusable, or Groq outlasted `agent_deadline_seconds` |
+| 502 | FortyGuard or Groq rejected the call, returned something unusable — including a 200 that is not a chat completion — or Groq outlasted `agent_deadline_seconds` |
 | 504 | FortyGuard job did not finish inside the bounded poll budget |
 
 A successful response never means "trust the model": `risk_level` and `decision` are always
-re-derived in code, and a heatmap with no readable temperatures returns MEDIUM/MODIFY with
-`null` temperatures rather than a `PROCEED` the data cannot support.
+re-derived in code, a heatmap with no readable temperatures returns MEDIUM/MODIFY with
+`null` temperatures rather than a `PROCEED` the data cannot support, and any prose that
+argued for a different verdict is replaced along with it.
+
 
 ## Layout
 
@@ -146,13 +150,23 @@ scripts/
   computed, logging a warning on any mismatch. Together with the line above, a model that
   invents a temperature or talks itself into a go-ahead at 41 °C cannot reach the
   dashboard — the model is left responsible only for `recommendation` and `reason`.
+- **The guidance never argues against the verdict.** `recommendation` and `reason` are the
+  model's to write, and are kept verbatim — but they are printed directly on the dashboard
+  card and inside the Slack alert, so when a threshold override contradicts the band the
+  model reasoned to, its prose is replaced with `risk.recommendation_for` /
+  `risk.reason_for`. "No special heat precautions needed" under a RESCHEDULE header is worse
+  than no advice at all.
 - **Reasoning runs on Groq through the `openai` SDK.** `AsyncOpenAI` pointed at
   `groq_base_url` (OpenAI-compatible), model `groq_model`, JSON mode, temperature 0.2.
   A reply that is not valid JSON or does not fit `AgentDecision` gets exactly one repair
   turn quoting the validation error back to the model; a second failure raises `AgentError`
   → 502. Transport-level 429s and 5xx are retried inside the SDK (`SDK_MAX_RETRIES`), which
   matters on Groq's rate-limited free tier; an HTTP error is never mistaken for a schema
-  error and never earns a repair turn.
+  error and never earns a repair turn. Neither is a 200 that is not a chat completion at all:
+  the SDK builds its response models without validating them, so a mistyped `GROQ_BASE_URL`
+  or a proxy's own 200 page arrives as a bare string, and `AgentError` names it instead of
+  letting an `AttributeError` become a 500.
+
 - **Python does the arithmetic.** `services/heatmap.py` computes peak and average, unlike
   the prototype, which stringified the whole heatmap into the prompt and let the model find
   the maximum itself.
