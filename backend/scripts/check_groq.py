@@ -17,6 +17,7 @@ worked last month can start returning `model_not_found`.
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -115,6 +116,15 @@ async def diagnose(settings: Settings) -> None:
               f"error text above.")
 
 
+# A slow/queued response looks nothing like a config error, so it needs its own hint. The
+# deadline message from agent.py contains this phrase.
+_SLOW_MARKERS = ("did not produce a decision within", "timed out", "timeout")
+
+# Interactive smoke tests should fail fast: a hung first call is what sends people reaching
+# for Ctrl-C. Cap the wait here regardless of the production `agent_deadline_seconds`.
+_SMOKE_DEADLINE_SECONDS = 25.0
+
+
 async def main() -> int:
 
     logging.basicConfig(level=logging.WARNING, format="  ! %(message)s")
@@ -138,20 +148,31 @@ async def main() -> int:
             file=sys.stderr,
         )
 
+    # Fail fast while poking at it interactively: cap the per-call wait so a slow first call
+    # cannot look like a hang. Never raise a deadline the user deliberately set lower.
+    deadline = min(settings.agent_deadline_seconds, _SMOKE_DEADLINE_SECONDS)
+    settings = settings.model_copy(update={"agent_deadline_seconds": deadline})
+
     print(f"model    {settings.groq_model}")
     print(f"endpoint {settings.groq_base_url}")
-    print(f"key      set ({len(settings.groq_api_key)} chars)\n")
+    print(f"key      set ({len(settings.groq_api_key)} chars)")
+    print(f"waiting  up to {deadline:g}s per call — the first call to a large model can take "
+          f"several seconds on the free tier\n")
 
     when = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)
     failures = 0
     config_fault = False
+    slow = False
 
     async with HeatRiskAgent(settings) as agent:
         for label, heatmap in CASES:
+            print(f"{label}  ->  calling Groq...", end="", flush=True)
+            started = time.monotonic()
             try:
                 decision = await agent.assess(heatmap, date_time=when)
             except AgentError as exc:
-                print(f"{label}  ->  FAILED: {exc}\n")
+                elapsed = time.monotonic() - started
+                print(f"\r{label}  ->  FAILED after {elapsed:.1f}s: {exc}\n")
                 failures += 1
                 message = str(exc).lower()
                 if any(fault in message for fault in _CONFIG_FAULTS):
@@ -159,8 +180,12 @@ async def main() -> int:
                     # way. Stop and diagnose instead of printing this four times.
                     config_fault = True
                     break
+                if any(marker in message for marker in _SLOW_MARKERS):
+                    slow = True
+                    break
                 continue
 
+            elapsed = time.monotonic() - started
             expected = EXPECTED.get(label)
             ok = expected is None or decision.decision == expected
             if not ok:
@@ -168,8 +193,9 @@ async def main() -> int:
 
             mark = "ok " if ok else "BAD"
             print(
-                f"{label}  ->  [{mark}] {decision.risk_level} / {decision.decision}"
+                f"\r{label}  ->  [{mark}] {decision.risk_level} / {decision.decision}"
                 f"  peak={decision.peak_temperature} avg={decision.average_temperature}"
+                f"  ({elapsed:.1f}s)"
             )
             if expected and not ok:
                 print(f"      expected decision {expected}")
@@ -180,12 +206,23 @@ async def main() -> int:
         await diagnose(settings)
         return 3
 
+    if slow:
+        print(
+            "That was a timeout, not a rejection — Groq accepted the request but did not "
+            "answer in time.\n"
+            "  - It is very likely just slow/queued, not broken. Re-run and give it a moment.\n"
+            "  - For a snappier demo, try the smaller model: add to backend/.env\n"
+            f"      GROQ_MODEL=openai/gpt-oss-20b"
+        )
+        return 3
+
     if failures:
         print(f"{failures} case(s) failed.")
         return 1
 
     print("All cases passed — Groq reasoning and threshold enforcement both work.")
     return 0
+
 
 
 
