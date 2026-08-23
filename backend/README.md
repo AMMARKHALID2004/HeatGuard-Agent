@@ -41,11 +41,18 @@ Common uv commands:
 cd backend && uv run python -m unittest discover -v
 ```
 
-`tests/test_fortyguard.py` drives the real `FortyGuardClient` against scripted responses
-via `httpx.MockTransport`, covering the success path (including the exact request body sent
-upstream), the bounded-poll timeout, and the API-error cases. It uses only the stdlib
-`unittest` — no test dependency to install — and pytest will collect it as-is if you add
-one later.
+44 tests, no network. Both suites drive the *real* client code against scripted replies via
+`httpx.MockTransport`, so nothing is stubbed and no request leaves the machine:
+
+- `tests/test_fortyguard.py` — `FortyGuardClient`: the success path (including the exact
+  request body sent upstream), the bounded-poll timeout, and the API-error cases.
+- `tests/test_agent.py` — `HeatRiskAgent`. The mock transport is injected into a real
+  `AsyncOpenAI` client (`http_client=`), so the SDK's own serialization, auth header, and
+  envelope parsing all execute. Covers the request Groq actually receives, threshold
+  enforcement over a hallucinated go-ahead, the single repair turn, and the API-error paths.
+
+Stdlib `unittest` only — no test dependency to install — and pytest will collect both
+as-is if you add one later.
 
 ## The one endpoint that matters
 
@@ -92,14 +99,15 @@ app/
 ├── config.py             env-backed Settings
 ├── schemas.py            request/response contracts
 ├── risk.py               fixed thresholds + decision mapping (not the LLM's call)
+├── agent.py              HeatRiskAgent: measure -> reason on Groq -> validate -> threshold
 ├── routers/evaluate.py   POST /api/evaluate
 └── services/
     ├── fortyguard.py     FortyGuardClient: request translation, submit + bounded poll
     ├── heatmap.py        data.result -> peak/average summary
-    ├── llm.py            Groq reasoning, schema-validated
     └── slack.py          RESCHEDULE alert (best-effort)
 tests/
-└── test_fortyguard.py    FortyGuardClient against httpx.MockTransport
+├── test_fortyguard.py    FortyGuardClient against httpx.MockTransport
+└── test_agent.py         HeatRiskAgent against a MockTransport-backed AsyncOpenAI
 ```
 
 ## Design notes
@@ -112,6 +120,18 @@ tests/
 - **Thresholds are code, not prompt.** The prompt states LOW/MEDIUM/HIGH so the model's
   prose stays consistent, but `risk.enforce_thresholds` overwrites `risk_level` and
   `decision` from the peak temperature after the model replies.
+- **The numbers are measured, not generated.** `agent.py` also overwrites
+  `peak_temperature` and `average_temperature` with what `heatmap.summarize_heatmap`
+  computed, logging a warning on any mismatch. Together with the line above, a model that
+  invents a temperature or talks itself into a go-ahead at 41 °C cannot reach the
+  dashboard — the model is left responsible only for `recommendation` and `reason`.
+- **Reasoning runs on Groq through the `openai` SDK.** `AsyncOpenAI` pointed at
+  `groq_base_url` (OpenAI-compatible), model `groq_model`, JSON mode, temperature 0.2.
+  A reply that is not valid JSON or does not fit `AgentDecision` gets exactly one repair
+  turn quoting the validation error back to the model; a second failure raises `AgentError`
+  → 502. Transport-level 429s and 5xx are retried inside the SDK (`SDK_MAX_RETRIES`), which
+  matters on Groq's rate-limited free tier; an HTTP error is never mistaken for a schema
+  error and never earns a repair turn.
 - **Python does the arithmetic.** `services/heatmap.py` computes peak and average, unlike
   the prototype, which stringified the whole heatmap into the prompt and let the model find
   the maximum itself.
@@ -119,9 +139,10 @@ tests/
   at `POLL_MAX_DELAY_SECONDS`, then `FortyGuardTimeout` → 504. That exception subclasses both
   `FortyGuardError` and the builtin `TimeoutError`, so callers can catch either. The
   prototype's unbounded `If → Wait → Check` cycle is the bug this replaces.
-- **The client is injectable.** `async with FortyGuardClient(settings)` owns and closes its
+- **The clients are injectable.** `async with FortyGuardClient(settings)` owns and closes its
   own `httpx.AsyncClient`; passing `http_client=` supplies your own instead and leaves
-  closing to you. That seam is what the tests hang `MockTransport` on.
+  closing to you. `HeatRiskAgent` follows the same shape with `client=` for its
+  `AsyncOpenAI`. Those seams are what the tests hang `MockTransport` on.
 - **Missing data stays missing.** No readings in the heatmap means `null` temperatures,
   not a guess — and with no peak to threshold against, the model's own classification is
   left in place.
