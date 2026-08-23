@@ -13,15 +13,21 @@ go-ahead on a 41 °C site is the one failure mode that actually matters:
   helpfully invents "34.5" cannot get it onto the dashboard.
 - **The classification is thresholded, not reasoned.** `risk_level` and `decision` are
   re-derived by `app.risk.enforce_thresholds` from that measured peak
-  (CLAUDE.md → "do not let the LLM decide thresholds itself").
+  (CLAUDE.md → "do not let the LLM decide thresholds itself"). That holds on the
+  no-reading path too, where the peak is `null`: rather than leave the verdict to the
+  model, an unmeasurable area floors to MEDIUM/MODIFY. A green PROCEED is a safety claim,
+  and an unparsed heatmap cannot back one.
 
 That leaves the model responsible for exactly what it is good at: the plain-language
 `recommendation` and `reason`.
 
 A reply that is not valid JSON, or does not fit `AgentDecision`, is handed back once as a
-repair turn quoting the validation error. A second failure raises `AgentError`.
+repair turn quoting the validation error. A second failure raises `AgentError`. The whole
+phase — both attempts and every SDK backoff sleep inside them — is capped by
+`settings.agent_deadline_seconds`, so a rate-limited free tier cannot outlast the demo.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -32,7 +38,7 @@ from openai import APIStatusError, AsyncOpenAI, OpenAIError
 from pydantic import ValidationError
 
 from .config import Settings
-from .risk import HIGH_THRESHOLD_C, MEDIUM_THRESHOLD_C, enforce_thresholds
+from .risk import HIGH_THRESHOLD_C, MEDIUM_THRESHOLD_C, enforce_thresholds, reason_for
 from .schemas import AgentDecision
 from .services.heatmap import summarize_heatmap
 
@@ -41,11 +47,13 @@ logger = logging.getLogger(__name__)
 # One initial call plus one repair turn. This counts *schema* attempts.
 MAX_ATTEMPTS = 2
 
-# Retries the SDK performs itself for transient transport failures — 429s and 5xx, with
-# backoff that respects Retry-After. Groq's free tier does rate-limit, so this is worth
-# keeping during judging. Orthogonal to MAX_ATTEMPTS: a 200 carrying malformed JSON is not
-# a transport failure and is never retried here.
-SDK_MAX_RETRIES = 2
+# Transport-level retries the SDK performs itself for transient 429s and 5xx. Kept at one,
+# not the SDK's default of two: it multiplies with MAX_ATTEMPTS, so each extra retry costs
+# two more requests per button press and makes the free-tier 429 it exists to absorb more
+# likely. The SDK honours a server `Retry-After` of up to 120s per retry, which is why
+# `settings.agent_deadline_seconds` caps the phase regardless of what this is set to.
+# Orthogonal to MAX_ATTEMPTS: a 200 carrying malformed JSON is not a transport failure.
+SDK_MAX_RETRIES = 1
 
 # Low but non-zero: the decision is deterministic, only the prose should vary.
 SAMPLING_TEMPERATURE = 0.2
@@ -78,6 +86,10 @@ reinterpret them, or substitute your own judgement:
 Never invent, estimate, extrapolate, or fill in a temperature. Use only the numbers you
 were given. If a temperature was not provided, return null for it and say it was
 unavailable in `reason`. A null is always better than a guess.
+
+If no temperature was provided at all, write `recommendation` for a site that could not be
+measured: assume caution, and tell the supervisor to verify conditions on the ground before
+committing the crew. Do not clear the shift on missing data.
 
 Write `recommendation` as one or two sentences of concrete guidance a site supervisor can
 act on today: shift timing, hydration and rest cadence, shade, task swaps. No hedging.
@@ -161,6 +173,12 @@ def _reconcile(decision: AgentDecision, summary: dict[str, Any]) -> AgentDecisio
             updates[field] = measured
 
     if updates:
+        # The model's `reason` narrates a temperature it just got wrong, so it would
+        # contradict the corrected number on the same card. Restate it from the
+        # measurement. (`enforce_thresholds` replaces this again if the peak is null.)
+        peak = summary["peak_temperature"]
+        if peak is not None:
+            updates["reason"] = reason_for(peak)
         decision = decision.model_copy(update=updates)
     return enforce_thresholds(decision)
 
@@ -219,8 +237,9 @@ class HeatRiskAgent:
     async def assess(self, heatmap: Any, *, date_time: datetime) -> AgentDecision:
         """Summarize `heatmap`, reason about it, and return a validated decision.
 
-        Raises `AgentError` if Groq is unreachable or misconfigured, or if it fails to
-        produce a schema-valid decision within `MAX_ATTEMPTS`.
+        Raises `AgentError` if Groq is unreachable or misconfigured, if it fails to produce
+        a schema-valid decision within `MAX_ATTEMPTS`, or if the whole phase outlasts
+        `settings.agent_deadline_seconds`.
         """
         summary = summarize_heatmap(heatmap)
         logger.info(
@@ -230,6 +249,21 @@ class HeatRiskAgent:
             summary["average_temperature"],
         )
 
+        deadline = self._settings.agent_deadline_seconds
+        try:
+            # One ceiling over every attempt, including the SDK's own backoff sleeps. A
+            # per-request timeout is not enough: retries multiply it, and a free-tier
+            # `Retry-After` can be far longer than the request itself.
+            async with asyncio.timeout(deadline):
+                return await self._reason(summary, date_time)
+        except TimeoutError as exc:
+            raise AgentError(
+                f"Groq did not produce a decision within {deadline:g}s "
+                f"(model={self._settings.groq_model})"
+            ) from exc
+
+    async def _reason(self, summary: dict[str, Any], date_time: datetime) -> AgentDecision:
+        """The attempt loop: one call, then at most one repair turn."""
         messages: list[dict[str, str]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(summary, date_time)},

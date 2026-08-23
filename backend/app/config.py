@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     poll_max_delay_seconds: float = 15.0
     http_timeout_seconds: float = 30.0
 
+    # --- Bounded reasoning: ceiling on the whole Groq phase, retries and repair turn
+    # included. Without it the SDK will honour a free-tier `Retry-After: 120` twice and the
+    # dashboard button spins for minutes.
+    agent_deadline_seconds: float = 45.0
+
     # --- CORS: comma-separated list of allowed dashboard origins ---
     cors_allow_origins: str = "http://localhost:3000"
 

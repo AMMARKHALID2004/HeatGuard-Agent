@@ -7,6 +7,7 @@ replies. Nothing is stubbed and no network is touched.
     uv run python -m unittest discover -v
 """
 
+import asyncio
 import json
 import unittest
 from datetime import datetime
@@ -15,7 +16,7 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI
 
-from app.agent import MAX_ATTEMPTS, AgentError, HeatRiskAgent
+from app.agent import MAX_ATTEMPTS, SDK_MAX_RETRIES, AgentError, HeatRiskAgent
 from app.config import Settings
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
@@ -100,6 +101,27 @@ class ScriptedGroq:
 
     def messages(self, index: int = 0) -> list[dict[str, str]]:
         return self.body(index)["messages"]
+
+
+class SlowGroq:
+    """A handler that stalls, so the reasoning deadline is what ends the call.
+
+    `httpx.MockTransport` awaits an async handler, so this sleeps on the event loop rather
+    than blocking it — `asyncio.timeout` can actually fire.
+    """
+
+    def __init__(self, *, delay: float):
+        self.delay = delay
+        self.requests: list[httpx.Request] = []
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        await asyncio.sleep(self.delay)
+        return httpx.Response(200, json=ok(decision_json())[1])
+
+    @property
+    def call_count(self) -> int:
+        return len(self.requests)
 
 
 class AgentTestCase(unittest.IsolatedAsyncioTestCase):
@@ -195,8 +217,10 @@ class SuccessTests(AgentTestCase):
 
         self.assertIsNone(decision.peak_temperature)
         self.assertIsNone(decision.average_temperature)
-        # With no peak there is nothing to threshold, so the model's own call stands.
-        self.assertEqual(decision.risk_level, "LOW")
+        # No measurement is not a clean bill of health: an unmeasurable area floors to
+        # caution rather than inheriting the model's guess.
+        self.assertEqual(decision.risk_level, "MEDIUM")
+        self.assertEqual(decision.decision, "MODIFY")
 
 
 class ThresholdEnforcementTests(AgentTestCase):
@@ -248,6 +272,33 @@ class ThresholdEnforcementTests(AgentTestCase):
         self.assertEqual(decision.average_temperature, 39.8)
         self.assertEqual(decision.decision, "RESCHEDULE")
 
+    async def test_a_corrected_temperature_takes_the_stale_reason_with_it(self):
+        """Prose about the wrong number must not sit beside the corrected one."""
+        groq = ScriptedGroq(
+            ok(
+                decision_json(
+                    peak_temperature=12.0,
+                    reason="Peak of 12.0 C is comfortably below the 30 C threshold.",
+                )
+            )
+        )
+        agent = self.build(groq)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+
+        self.assertNotIn("12.0", decision.reason)
+        self.assertIn("41.2", decision.reason)
+
+    async def test_a_faithful_reply_keeps_the_models_own_reason(self):
+        """The model owns the prose; it is only overridden when it got a number wrong."""
+        mine = "Peak of 41.2 C sits well above the 33 C cutoff for heavy outdoor work."
+        groq = ScriptedGroq(ok(decision_json(reason=mine)))
+        agent = self.build(groq)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+
+        self.assertEqual(decision.reason, mine)
+
     async def test_an_invented_temperature_is_nulled_when_nothing_was_measured(self):
         groq = ScriptedGroq(
             ok(decision_json(peak_temperature=34.5, average_temperature=33.1))
@@ -258,6 +309,78 @@ class ThresholdEnforcementTests(AgentTestCase):
 
         self.assertIsNone(decision.peak_temperature)
         self.assertIsNone(decision.average_temperature)
+
+
+class UnmeasurableAreaTests(AgentTestCase):
+    """A heatmap the parser cannot read must never produce a go-ahead.
+
+    `services/heatmap.py` carries a TODO(fortyguard-docs): the real result schema is
+    unconfirmed, so "zero readings found" is a live risk, not a hypothetical. Whatever the
+    model says on that path, the answer is decided in code.
+    """
+
+    async def test_no_readings_never_yields_proceed_whatever_the_model_says(self):
+        for risk_level, decision_value in (
+            ("LOW", "PROCEED"),
+            ("MEDIUM", "MODIFY"),
+            ("HIGH", "RESCHEDULE"),
+        ):
+            with self.subTest(model_said=f"{risk_level}/{decision_value}"):
+                groq = ScriptedGroq(
+                    ok(
+                        decision_json(
+                            risk_level=risk_level,
+                            decision=decision_value,
+                            peak_temperature=None,
+                            average_temperature=None,
+                        )
+                    )
+                )
+                agent = self.build(groq)
+
+                result = await agent.assess(NO_READINGS, date_time=WHEN)
+
+                self.assertEqual(result.decision, "MODIFY")
+                self.assertEqual(result.risk_level, "MEDIUM")
+                self.assertNotEqual(result.decision, "PROCEED")
+
+    async def test_no_readings_never_fires_a_slack_alert_off_a_guess(self):
+        """RESCHEDULE is the Slack trigger, so a hallucinated HIGH must not reach it."""
+        groq = ScriptedGroq(
+            ok(decision_json(risk_level="HIGH", decision="RESCHEDULE"))
+        )
+        agent = self.build(groq)
+
+        result = await agent.assess(NO_READINGS, date_time=WHEN)
+
+        self.assertNotEqual(result.decision, "RESCHEDULE")
+
+    async def test_the_reason_explains_the_missing_data_not_a_dropped_temperature(self):
+        groq = ScriptedGroq(
+            ok(decision_json(reason="Peak of 41.2 C is above the 33 C HIGH threshold."))
+        )
+        agent = self.build(groq)
+
+        result = await agent.assess(NO_READINGS, date_time=WHEN)
+
+        # The model's reason described a temperature that got nulled; it must not survive
+        # next to a blank peak on the card.
+        self.assertNotIn("41.2", result.reason)
+        self.assertIn("no usable temperature readings", result.reason.lower())
+
+    async def test_risk_level_and_decision_never_contradict_each_other(self):
+        """A mismatched pair must be repaired, not passed through."""
+        for heatmap in (HOT, WARM, MILD, NO_READINGS):
+            with self.subTest(heatmap=heatmap):
+                groq = ScriptedGroq(
+                    ok(decision_json(risk_level="HIGH", decision="PROCEED"))
+                )
+                agent = self.build(groq)
+
+                result = await agent.assess(heatmap, date_time=WHEN)
+
+                expected = {"LOW": "PROCEED", "MEDIUM": "MODIFY", "HIGH": "RESCHEDULE"}
+                self.assertEqual(result.decision, expected[result.risk_level])
 
 
 class RetryTests(AgentTestCase):
@@ -377,6 +500,62 @@ class ApiErrorTests(AgentTestCase):
             await agent.assess(HOT, date_time=WHEN)
 
         self.assertEqual(groq.call_count, 2)
+
+
+class DeadlineTests(AgentTestCase):
+    """The reasoning phase is capped in wall-clock, not just per request.
+
+    A per-request timeout is not enough: `MAX_ATTEMPTS` multiplies it, and the SDK honours a
+    server `Retry-After` that can dwarf the request itself. On Groq's free tier that is how
+    a dashboard button ends up spinning past the demo window.
+    """
+
+    async def test_a_slow_groq_is_cut_off_at_the_deadline(self):
+        groq = SlowGroq(delay=5.0)
+        agent = self.build(groq, agent_deadline_seconds=0.15)
+
+        with self.assertRaises(AgentError) as caught:
+            await agent.assess(HOT, date_time=WHEN)
+
+        message = str(caught.exception)
+        self.assertIn("0.15s", message)
+        self.assertIn(MODEL, message)
+
+    async def test_the_deadline_error_is_an_agent_error_the_router_already_maps(self):
+        """`evaluate.py` catches `AgentError` -> 502; a bare TimeoutError would be a 500."""
+        groq = SlowGroq(delay=5.0)
+        agent = self.build(groq, agent_deadline_seconds=0.15)
+
+        with self.assertRaises(AgentError):
+            await agent.assess(HOT, date_time=WHEN)
+
+    async def test_a_prompt_reply_is_untouched_by_the_deadline(self):
+        groq = ScriptedGroq()
+        agent = self.build(groq, agent_deadline_seconds=30.0)
+
+        decision = await agent.assess(HOT, date_time=WHEN)
+
+        self.assertEqual(decision.decision, "RESCHEDULE")
+
+    async def test_sdk_retries_are_bounded_so_one_click_cannot_fan_out(self):
+        """With the real `SDK_MAX_RETRIES`, a persistent 500 costs 1 + retries requests."""
+        groq = ScriptedGroq((500, {"error": {"message": "internal"}}))
+        http = httpx.AsyncClient(transport=httpx.MockTransport(groq))
+        self.addAsyncCleanup(http.aclose)
+        client = AsyncOpenAI(
+            api_key=API_KEY,
+            base_url=GROQ_BASE_URL,
+            max_retries=SDK_MAX_RETRIES,
+            http_client=http,
+        )
+        agent = HeatRiskAgent(make_settings(), client=client)
+
+        with self.assertRaises(AgentError):
+            await agent.assess(HOT, date_time=WHEN)
+
+        # An API error never earns a repair turn, so this is the whole cost of one click.
+        self.assertEqual(groq.call_count, 1 + SDK_MAX_RETRIES)
+        self.assertLessEqual(groq.call_count, 2, "retry amplification must stay small")
 
 
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):

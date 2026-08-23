@@ -41,7 +41,7 @@ Common uv commands:
 cd backend && uv run python -m unittest discover -v
 ```
 
-44 tests, no network. Both suites drive the *real* client code against scripted replies via
+54 tests, no network. Both suites drive the *real* client code against scripted replies via
 `httpx.MockTransport`, so nothing is stubbed and no request leaves the machine:
 
 - `tests/test_fortyguard.py` — `FortyGuardClient`: the success path (including the exact
@@ -49,7 +49,8 @@ cd backend && uv run python -m unittest discover -v
 - `tests/test_agent.py` — `HeatRiskAgent`. The mock transport is injected into a real
   `AsyncOpenAI` client (`http_client=`), so the SDK's own serialization, auth header, and
   envelope parsing all execute. Covers the request Groq actually receives, threshold
-  enforcement over a hallucinated go-ahead, the single repair turn, and the API-error paths.
+  enforcement over a hallucinated go-ahead, the unmeasurable-area fail-safe, the reasoning
+  deadline, the single repair turn, and the API-error paths.
 
 Stdlib `unittest` only — no test dependency to install — and pytest will collect both
 as-is if you add one later.
@@ -102,8 +103,12 @@ Error mapping — the dashboard can rely on these:
 | Status | Meaning |
 | ------ | ------- |
 | 422 | AOI ring or `date_time` failed validation |
-| 502 | FortyGuard or Groq rejected the call / returned something unusable |
+| 502 | FortyGuard or Groq rejected the call, returned something unusable, or Groq outlasted `agent_deadline_seconds` |
 | 504 | FortyGuard job did not finish inside the bounded poll budget |
+
+A successful response never means "trust the model": `risk_level` and `decision` are always
+re-derived in code, and a heatmap with no readable temperatures returns MEDIUM/MODIFY with
+`null` temperatures rather than a `PROCEED` the data cannot support.
 
 ## Layout
 
@@ -159,8 +164,16 @@ scripts/
   own `httpx.AsyncClient`; passing `http_client=` supplies your own instead and leaves
   closing to you. `HeatRiskAgent` follows the same shape with `client=` for its
   `AsyncOpenAI`. Those seams are what the tests hang `MockTransport` on.
-- **Missing data stays missing.** No readings in the heatmap means `null` temperatures,
-  not a guess — and with no peak to threshold against, the model's own classification is
-  left in place.
+- **Missing data never becomes a go-ahead.** No readings in the heatmap means `null`
+  temperatures, not a guess — and because `PROCEED` is a safety claim that nothing can then
+  back, an unmeasurable area floors to MEDIUM/MODIFY with a deterministic `reason`, rather
+  than inheriting whatever the model guessed. This matters more than it looks: the
+  `TODO(fortyguard-docs)` in `services/heatmap.py` means "parser found zero readings" is a
+  live possibility, and the alternative is a green card on a 41 °C site.
+- **Reasoning is bounded in wall-clock, not just per request.** `agent_deadline_seconds`
+  (45s) caps the entire Groq phase — both schema attempts and every SDK backoff sleep inside
+  them — then raises `AgentError` → 502. A per-request timeout is not enough, because
+  `MAX_ATTEMPTS` multiplies it and Groq's free tier can send a `Retry-After` far longer than
+  the request itself.
 - **Slack is best-effort.** A webhook failure is logged and surfaced as
   `alert_sent: false`; the evaluation still succeeds.
