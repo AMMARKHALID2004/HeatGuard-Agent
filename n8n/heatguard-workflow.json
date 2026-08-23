@@ -1,0 +1,515 @@
+{
+  "name": "HeatGuard Agent - FortyGuard",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -5616,
+        736
+      ],
+      "id": "b229d6ac-e570-4be7-ab99-004f9edb7640",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.fortyguard.com/v1/heatmap",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"polygon_aoi\": {\n    \"type\": \"FeatureCollection\",\n    \"features\": [\n      {\n        \"type\": \"Feature\",\n        \"properties\": {},\n        \"geometry\": {\n          \"type\": \"Polygon\",\n          \"coordinates\": [\n            [\n              [-74.0170, 40.7050],\n              [-74.0030, 40.7050],\n              [-74.0030, 40.7180],\n              [-74.0170, 40.7180],\n              [-74.0170, 40.7050]\n            ]\n          ]\n        }\n      }\n    ]\n  },\n  \"date_time\": {\n    \"start_date\": \"2024-07-15\",\n    \"start_time\": \"14:00\",\n    \"filter_type\": 1\n  },\n  \"granularity\": 100\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -5200,
+        784
+      ],
+      "id": "673709fd-d3cd-45e9-834d-46bc0e02440c",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "a6pnOxqOD8vHB6Of",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.fortyguard.com/v1/status/{{ $json.data.activity_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -4976,
+        784
+      ],
+      "id": "c9918eb4-9a43-4ba7-8a58-1654d61cfb70",
+      "name": "Check Heatmap Status",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "a6pnOxqOD8vHB6Of",
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "345c5c4c-7dd0-4c5b-85a8-9933bf6e5762",
+              "leftValue": "={{ $json.data.status }}",
+              "rightValue": "Completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -4752,
+        720
+      ],
+      "id": "3d48e837-41b2-40a1-a446-2efa986f21b6",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -4528,
+        880
+      ],
+      "id": "23ca99b5-a752-4456-a803-fe392d562560",
+      "name": "Wait",
+      "webhookId": "ef6a29c2-c25e-4be5-83a4-e25874a0558d"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7eb68671-d64a-4c5a-8bd2-92d1fef679e0",
+              "name": "heatmap_data",
+              "value": "={{ $json.data.result }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -4528,
+        672
+      ],
+      "id": "39dada52-a89f-4597-80a9-91f9b138aa6e",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nreturn [\n  {\n    json: {\n      heatmap_data: item.heatmap_data,\n      activity_id: item.activity_id || null,\n      source: \"FortyGuard Temperature API\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4304,
+        672
+      ],
+      "id": "d67f758a-81ee-4450-be1d-6f35bf03905b",
+      "name": "Prepare Heat Data"
+    },
+    {
+      "parameters": {
+        "model": "dots-studio/dots-3-note-preview:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -4000,
+        896
+      ],
+      "id": "4964d740-8f13-4b6d-85c7-d427e0d587fb",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "vWBRuDA40yVubcT0",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are HeatGuard Agent, an urban heat-risk decision assistant.\n\nYou analyze real temperature data from the FortyGuard Temperature API.\n\nRULES:\n- Use ONLY the provided FortyGuard data.\n- Never invent temperature values, times, locations, or forecasts.\n- If a value is unavailable, return null.\n- Temperature is in Celsius.\n\nRISK RULES:\n- LOW: peak temperature < 30°C\n- MEDIUM: peak temperature >= 30°C and < 33°C\n- HIGH: peak temperature >= 33°C\n\nDECISION RULES:\n- LOW → PROCEED\n- MEDIUM → MODIFY\n- HIGH → RESCHEDULE\n\nIMPORTANT:\nAlways follow these thresholds.\nDo not choose a risk level based on subjective judgment.\nFor example, 33.14°C MUST be HIGH.\n\nFORTYGUARD DATA:\n{{ JSON.stringify($json.heatmap_data) }}\n\nDetermine:\n1. Maximum temperature.\n2. Average temperature when available.\n3. Risk level.\n4. Decision.\n5. One actionable recommendation.\n6. Short reason.\n\nReturn ONLY valid JSON.\n\nRequired format:\n\n{\n  \"risk_level\": \"HIGH\",\n  \"peak_temperature\": null,\n  \"average_temperature\": null,\n  \"decision\": \"RESCHEDULE\",\n  \"recommendation\": \"\",\n  \"reason\": \"\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -4080,
+        672
+      ],
+      "id": "66458575-e038-4744-a056-2ef329b5c2f4",
+      "name": "HeatGuard Agent"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "heatguard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -6240,
+        1376
+      ],
+      "id": "505d1631-354d-41c2-a4ca-a6b86b09ffb5",
+      "name": "HeatGuard Webhook",
+      "webhookId": "5f6bfd59-8676-4f1a-a760-12cb82ab9181"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.output;\n\nlet result;\n\ntry {\n  result = JSON.parse(raw);\n} catch (error) {\n  throw new Error(\"Agent did not return valid JSON: \" + raw);\n}\n\nreturn [{\n  json: {\n    risk_level: result.risk_level,\n    peak_temperature: result.peak_temperature,\n    average_temperature: result.average_temperature,\n    decision: result.decision,\n    recommendation: result.recommendation,\n    reason: result.reason,\n    source: \"FortyGuard Temperature API\",\n    agent: \"HeatGuard Agent\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3728,
+        672
+      ],
+      "id": "7a4afc0a-06a6-44ca-a84c-d9e4f1acf64b",
+      "name": "Parse Agent Decision"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "15d906fd-3c17-4b7f-9da9-cb95772230be",
+              "name": "message",
+              "value": "={{ \"🌡️ HeatGuard Alert\\n\\n\" +\"Risk: \" + $json.risk_level + \"\\n\" +\"Peak Temperature: \" + $json.peak_temperature + \"°C\\n\" +\"Average Temperature: \" + $json.average_temperature + \"°C\\n\" +\"Decision: \" + $json.decision + \"\\n\\n\" +\"⚠️ Reason:\\n\" + $json.reason + \"\\n\\n\" +\"💡 Recommendation:\\n\" + $json.recommendation}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3504,
+        672
+      ],
+      "id": "7ddd0240-d1c6-48f3-a992-effad226f508",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a6194aa0-371a-47dd-8714-590f2e555bd1",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "RESCHEDULE",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3280,
+        672
+      ],
+      "id": "21c43e51-5c79-4bb2-8516-7503ebfe262e",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "123"
+        },
+        "text": "=🌡️ HeatGuard Alert  🚨 Risk: {{ $json.risk_level }} 🌡️ Peak Temperature: {{ $json.peak_temperature }}°C 📊 Average Temperature: {{ $json.average_temperature }}°C  ⚡ Decision: {{ $json.decision }}  ⚠️ Reason: {{ $json.reason }}  💡 Recommendation: {{ $json.recommendation }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -3056,
+        576
+      ],
+      "id": "23c33e57-00f8-401c-bf41-8b8469b69920",
+      "name": "Send a message",
+      "webhookId": "a9e0b107-8374-484a-8623-dfc9eba02730",
+      "credentials": {
+        "slackApi": {
+          "id": "MGfvVETPbsKVHYhw",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "123"
+        },
+        "text": "=🌡️ HeatGuard Update\n\nRisk: {{ $json.risk_level }}\nPeak Temperature: {{ $json.peak_temperature }}°C\nAverage Temperature: {{ $json.average_temperature }}°C\n\nDecision: {{ $json.decision }}\n\n⚠️ Reason:\n{{ $json.reason }}\n\n💡 Recommendation:\n{{ $json.recommendation }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -3056,
+        768
+      ],
+      "id": "10627289-360d-4c3e-b0b4-8d6d2658efdb",
+      "name": "Send a message1",
+      "webhookId": "a9e0b107-8374-484a-8623-dfc9eba02730",
+      "credentials": {
+        "slackApi": {
+          "id": "MGfvVETPbsKVHYhw",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "شغال",
+        "height": 432,
+        "width": 256
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3664,
+        528
+      ],
+      "typeVersion": 1,
+      "id": "1c33d50c-9552-49cc-9a8a-0cb32154eed4",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Check Heatmap Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Heatmap Status": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Check Heatmap Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Prepare Heat Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Heat Data": {
+      "main": [
+        [
+          {
+            "node": "HeatGuard Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "HeatGuard Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeatGuard Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Decision": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "62b04b40-4203-457a-b29a-3b1eec0b1d19",
+  "meta": {
+    "instanceId": "5e0c787996279ff79bb0d338761bc5300a96bccdec84eb97ee2811787e6c64b4"
+  },
+  "id": "oMh2i3b2Ye2j3QdT",
+  "tags": []
+}
