@@ -1,13 +1,27 @@
-import { NEUTRAL_FILL, RISK_STYLES } from "@/lib/risk";
+"use client";
+
+import dynamic from "next/dynamic";
+
+import { RISK_STYLES } from "@/lib/risk";
 import type { Coordinate, RiskLevel } from "@/lib/types";
 
 /**
- * Zero-dependency AOI preview: the polygon ring normalized into a square viewBox, tinted
- * by the current risk level.
+ * Leaflet must not run on the server (it reaches for `window` when the map is built), so the
+ * tile canvas is loaded client-only. The card chrome around it — label, threshold legend and
+ * coordinates — renders immediately; only the map waits for the browser.
  *
- * TODO(map): swap for a real basemap + per-cell heat overlay (MapLibre GL or Leaflet) once
- * the FortyGuard grid geometry is confirmed. This keeps the dashboard demoable meanwhile.
+ * The public shape is unchanged from the SVG placeholder this replaces, so `page.tsx` is
+ * untouched. TODO(map) for the per-cell heat overlay now lives in `MapCanvas.tsx`.
  */
+const MapCanvas = dynamic(() => import("./MapCanvas").then((m) => m.MapCanvas), {
+  ssr: false,
+  loading: () => (
+    <div className="mt-4 flex h-[420px] w-full items-center justify-center rounded-lg bg-slate-900/70 text-xs text-slate-500">
+      Loading map…
+    </div>
+  ),
+});
+
 export function AoiMap({
   ring,
   riskLevel,
@@ -17,12 +31,9 @@ export function AoiMap({
   ring: Coordinate[];
   riskLevel: RiskLevel | null;
   label: string;
-  /** Dims the outline while an evaluation runs, so the tint is not read as current. */
+  /** Dims the map while an evaluation runs, so the tint is not read as current. */
   isPending?: boolean;
 }) {
-  const fill = riskLevel ? RISK_STYLES[riskLevel].fill : NEUTRAL_FILL;
-  const points = normalizeRing(ring);
-
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
       <h2 className="text-xs font-medium uppercase tracking-widest text-slate-500">
@@ -30,39 +41,17 @@ export function AoiMap({
       </h2>
       <p className="mt-1.5 text-sm text-slate-300">{label}</p>
 
-      <svg
-        viewBox="0 0 100 100"
-        className={`mt-4 aspect-square w-full rounded-lg bg-slate-900/70 transition-opacity ${
-          isPending ? "opacity-40" : "opacity-100"
-        }`}
-        role="img"
-        aria-label={
-          riskLevel
-            ? `AOI outline, ${ring.length - 1} vertices, ${riskLevel} risk`
-            : `AOI outline, ${ring.length - 1} vertices, not yet evaluated`
-        }
-      >
-        <defs>
-          <pattern id="aoi-grid" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path
-              d="M 10 0 L 0 0 0 10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.3"
-              className="text-white/10"
-            />
-          </pattern>
-        </defs>
-        <rect width="100" height="100" fill="url(#aoi-grid)" />
-        <polygon
-          points={points}
-          fill={fill}
-          fillOpacity={0.22}
-          stroke={fill}
-          strokeWidth={1.2}
-          strokeLinejoin="round"
-        />
-      </svg>
+      {/* Leaflet controls are interactive, so this is not an `img`; a screen reader gets the
+          state from here instead of from the tiles. */}
+      <p className="sr-only">
+        {riskLevel
+          ? `Map of ${label}, ${riskLevel} risk`
+          : `Map of ${label}, not yet evaluated`}
+      </p>
+
+      <div className={`transition-opacity ${isPending ? "opacity-40" : "opacity-100"}`}>
+        <MapCanvas ring={ring} riskLevel={riskLevel} />
+      </div>
 
       {/* The thresholds are stated on screen because the colour is otherwise unexplained,
           and because they are fixed in `backend/app/risk.py` rather than being the model's
@@ -98,25 +87,4 @@ export function AoiMap({
       </ul>
     </section>
   );
-}
-
-/** Fit the ring to a 0–100 viewBox with padding, flipping latitude for screen coords. */
-function normalizeRing(ring: Coordinate[]): string {
-  const longitudes = ring.map(([lon]) => lon);
-  const latitudes = ring.map(([, lat]) => lat);
-  const minLon = Math.min(...longitudes);
-  const minLat = Math.min(...latitudes);
-  const spanLon = Math.max(...longitudes) - minLon || 1e-9;
-  const spanLat = Math.max(...latitudes) - minLat || 1e-9;
-
-  const padding = 12;
-  const scale = 100 - padding * 2;
-
-  return ring
-    .map(([lon, lat]) => {
-      const x = padding + ((lon - minLon) / spanLon) * scale;
-      const y = padding + (1 - (lat - minLat) / spanLat) * scale;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
 }
