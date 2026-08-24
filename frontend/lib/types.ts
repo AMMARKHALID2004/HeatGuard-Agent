@@ -31,3 +31,31 @@ export interface EvaluateResponse extends AgentDecision {
   evaluated_at: string;
   alert_sent: boolean;
 }
+
+/** Mirrors `backend/app/errors.py`. Every non-2xx, 422 included, has this shape. */
+export type ApiErrorCode =
+  | "invalid_request"
+  | "fortyguard_not_configured"
+  | "fortyguard_timeout"
+  | "fortyguard_failed"
+  | "fortyguard_unreachable"
+  | "agent_not_configured"
+  | "agent_rate_limited"
+  | "agent_timeout"
+  | "agent_failed";
+
+export interface ErrorDetail {
+  code: ApiErrorCode;
+  /** Written for the person looking at the dashboard. Safe to render as-is. */
+  message: string;
+  /** Where to look to fix it. Never contains upstream text, so never a leaked key. */
+  hint: string;
+  /** Whether repeating the identical request could plausibly succeed. */
+  retryable: boolean;
+}
+
+export interface ApiErrorBody {
+  /** Duplicates `error.message`, for clients that only read FastAPI's default body. */
+  detail: string;
+  error: ErrorDetail;
+}

@@ -47,6 +47,10 @@ class FortyGuardError(RuntimeError):
     """FortyGuard rejected the request or returned something unusable."""
 
 
+class FortyGuardNotConfigured(FortyGuardError):
+    """No `FORTYGUARD_API_KEY`. An operator problem, so retrying cannot help."""
+
+
 class FortyGuardTimeout(FortyGuardError, TimeoutError):
     """A job did not reach "Completed" within the bounded poll budget.
 
@@ -143,7 +147,7 @@ class FortyGuardClient:
 
     def _request_headers(self) -> dict[str, str]:
         if not self._settings.fortyguard_api_key:
-            raise FortyGuardError("FORTYGUARD_API_KEY is not set")
+            raise FortyGuardNotConfigured("FORTYGUARD_API_KEY is not set")
         return {"api-key": self._settings.fortyguard_api_key}
 
     async def submit_heatmap(

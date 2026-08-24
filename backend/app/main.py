@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .config import get_settings
+from .errors import register_error_handlers
 from .routers import evaluate
 from .schemas import HealthResponse
 
@@ -17,6 +18,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
 )
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -38,6 +41,9 @@ app.add_middleware(
 )
 
 app.include_router(evaluate.router)
+
+# Every non-2xx body, 422 included, comes out of here with the same shape.
+register_error_handlers(app, logger)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["meta"])

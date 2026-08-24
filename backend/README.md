@@ -41,8 +41,8 @@ Common uv commands:
 cd backend && uv run python -m unittest discover -v
 ```
 
-61 tests, no network. Both suites drive the *real* client code against scripted replies via
-`httpx.MockTransport`, so nothing is stubbed and no request leaves the machine:
+85 tests, no network. Every suite drives the *real* client code against scripted replies via
+`httpx.MockTransport`, so nothing of ours is stubbed and no request leaves the machine:
 
 - `tests/test_fortyguard.py` — `FortyGuardClient`: the success path (including the exact
   request body sent upstream), the bounded-poll timeout, and the API-error cases.
@@ -52,6 +52,13 @@ cd backend && uv run python -m unittest discover -v
   enforcement over a hallucinated go-ahead, prose that would contradict the enforced verdict,
   the unmeasurable-area fail-safe, the reasoning deadline, the single repair turn, a 200 that
   is not a chat completion at all, and the API-error paths.
+- `tests/test_evaluate.py` — `POST /api/evaluate` through Starlette's `TestClient`. Four of
+  these run the *whole* chain with both upstreams behind `MockTransport` — FortyGuard submit,
+  poll, Groq completion and Slack post all fire, and the assertions check that neither API key
+  reaches the response body. The rest cover the error contract: every failure's status, code
+  and `retryable` flag, that all of them share one body shape, that a 422 never spends a
+  FortyGuard credit, and that a broken `SLACK_WEBHOOK_URL` costs the alert but not the
+  decision.
 
 
 Stdlib `unittest` only — no test dependency to install — and pytest will collect both
@@ -100,13 +107,46 @@ Returns the agent decision:
 }
 ```
 
-Error mapping — the dashboard can rely on these:
+### Errors the dashboard can display
 
-| Status | Meaning |
-| ------ | ------- |
-| 422 | AOI ring or `date_time` failed validation |
-| 502 | FortyGuard or Groq rejected the call, returned something unusable — including a 200 that is not a chat completion — or Groq outlasted `agent_deadline_seconds` |
-| 504 | FortyGuard job did not finish inside the bounded poll budget |
+Every non-2xx response — 422 included — has the same body, so the frontend has one shape to
+parse and never has to assemble its own wording:
+
+```json
+{
+  "detail": "The temperature service is still working on this area and did not finish in time. Nothing is wrong with the request — try again in a moment.",
+  "error": {
+    "code": "fortyguard_timeout",
+    "message": "The temperature service is still working on this area and did not finish in time. Nothing is wrong with the request — try again in a moment.",
+    "hint": "FortyGuard heatmap jobs are asynchronous. Raise POLL_MAX_ATTEMPTS in backend/.env if large areas routinely need longer.",
+    "retryable": true
+  }
+}
+```
+
+`detail` duplicates `error.message` so a client reading only FastAPI's default field still
+shows a readable sentence. `retryable` is the field worth branching on: it separates "press
+the button again and it may work" from "it will fail the same way until someone fixes
+something".
+
+| Status | `code` | Retryable | Cause |
+| ------ | ------ | --------- | ----- |
+| 422 | `invalid_request` | no | AOI ring or `date_time` failed validation |
+| 500 | `fortyguard_not_configured` | no | No `FORTYGUARD_API_KEY`, or a malformed `FORTYGUARD_BASE_URL` |
+| 500 | `agent_not_configured` | no | No `GROQ_API_KEY` |
+| 502 | `fortyguard_failed` | no | FortyGuard rejected the request |
+| 502 | `fortyguard_unreachable` | yes | Network error reaching FortyGuard |
+| 502 | `agent_failed` | yes | Groq returned something unusable twice — including a 200 that is not a chat completion |
+| 503 | `agent_rate_limited` | yes | Groq's free tier limit; carries `Retry-After` when Groq sent one |
+| 504 | `fortyguard_timeout` | yes | Heatmap job outlasted the bounded poll budget, or the connection timed out |
+| 504 | `agent_timeout` | yes | Reasoning outlasted `AGENT_DEADLINE_SECONDS` |
+
+**Upstream error text is never in the response.** `FortyGuardError` embeds up to 300
+characters of FortyGuard's reply and `AgentError` embeds Groq's, and an upstream that echoes a
+rejected request back would put an API key in a browser payload. The real cause is logged to
+the uvicorn console under the same `code` the client saw, so a screenshot of the dashboard is
+enough to find the matching log line. `hint` is written per code in `app/errors.py` and quotes
+nothing an upstream sent.
 
 A successful response never means "trust the model": `risk_level` and `decision` are always
 re-derived in code, a heatmap with no readable temperatures returns MEDIUM/MODIFY with
@@ -121,6 +161,7 @@ app/
 ├── main.py               FastAPI app, CORS, /health
 ├── config.py             env-backed Settings
 ├── schemas.py            request/response contracts
+├── errors.py             internal failures -> displayable HTTP responses
 ├── risk.py               fixed thresholds + decision mapping (not the LLM's call)
 ├── agent.py              HeatRiskAgent: measure -> reason on Groq -> validate -> threshold
 ├── routers/evaluate.py   POST /api/evaluate
@@ -130,7 +171,8 @@ app/
     └── slack.py          RESCHEDULE alert (best-effort)
 tests/
 ├── test_fortyguard.py    FortyGuardClient against httpx.MockTransport
-└── test_agent.py         HeatRiskAgent against a MockTransport-backed AsyncOpenAI
+├── test_agent.py         HeatRiskAgent against a MockTransport-backed AsyncOpenAI
+└── test_evaluate.py      the route end to end, plus the error contract
 scripts/
 └── check_groq.py         live Groq call, no FortyGuard credits spent
 ```
@@ -166,7 +208,6 @@ scripts/
   the SDK builds its response models without validating them, so a mistyped `GROQ_BASE_URL`
   or a proxy's own 200 page arrives as a bare string, and `AgentError` names it instead of
   letting an `AttributeError` become a 500.
-
 - **Python does the arithmetic.** `services/heatmap.py` computes peak and average, unlike
   the prototype, which stringified the whole heatmap into the prompt and let the model find
   the maximum itself.
@@ -186,8 +227,21 @@ scripts/
   live possibility, and the alternative is a green card on a 41 °C site.
 - **Reasoning is bounded in wall-clock, not just per request.** `agent_deadline_seconds`
   (45s) caps the entire Groq phase — both schema attempts and every SDK backoff sleep inside
-  them — then raises `AgentError` → 502. A per-request timeout is not enough, because
+  them — then raises `AgentTimeout` → 504. A per-request timeout is not enough, because
   `MAX_ATTEMPTS` multiplies it and Groq's free tier can send a `Retry-After` far longer than
-  the request itself.
+  the request itself. When Groq says so explicitly, `AgentRateLimited` carries that
+  `Retry-After` through to the client as a 503, so the dashboard can time its own retry
+  instead of guessing.
+- **Failures are translated once, in one place.** `app/errors.py` maps each internal
+  exception onto its status, `code`, displayable `message` and `hint`, and is the only place
+  the internal cause is logged. The mapping is ordered most-specific-first because the
+  hierarchies overlap — `FortyGuardTimeout` is a `FortyGuardError`, and `AgentTimeout` /
+  `AgentRateLimited` / `AgentNotConfigured` are all `AgentError`. Anything it does not
+  recognise is re-raised rather than flattened, so a genuine bug still surfaces as a 500 with
+  a traceback instead of a misleading 502.
 - **Slack is best-effort.** A webhook failure is logged and surfaced as
-  `alert_sent: false`; the evaluation still succeeds.
+  `alert_sent: false`; the evaluation still succeeds. The `except` around it is deliberately
+  broad, because `httpx.InvalidURL` does *not* inherit from `httpx.HTTPError`: a
+  `SLACK_WEBHOOK_URL` with a typo'd port escaped a narrower handler and took a valid
+  RESCHEDULE down with it — the one verdict that matters most, lost because a *notification*
+  was misconfigured.

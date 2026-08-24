@@ -58,22 +58,43 @@ def _build_message(decision: AgentDecision) -> dict[str, object]:
     }
 
 
-async def send_alert(settings: Settings, decision: AgentDecision) -> bool:
-    """Post the decision to Slack. Returns whether the alert was delivered."""
+async def send_alert(
+    settings: Settings,
+    decision: AgentDecision,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+) -> bool:
+    """Post the decision to Slack. Returns whether the alert was delivered.
+
+    Pass `http_client` to supply your own transport — the same injection point
+    `FortyGuardClient` and `HeatRiskAgent` offer, and how the tests drive this offline.
+    """
     if not settings.slack_webhook_url:
         logger.info("SLACK_WEBHOOK_URL not set — skipping alert")
         return False
 
     try:
-        async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
-            response = await client.post(
+        if http_client is not None:
+            response = await http_client.post(
                 settings.slack_webhook_url, json=_build_message(decision)
             )
+        else:
+            async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+                response = await client.post(
+                    settings.slack_webhook_url, json=_build_message(decision)
+                )
         if response.is_error:
             logger.error("Slack webhook returned HTTP %s: %s", response.status_code, response.text[:200])
             return False
-    except httpx.HTTPError as exc:
-        logger.error("Slack webhook post failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — see below
+        # Deliberately broad, and the reason is a real bug this caught: `httpx.InvalidURL`
+        # inherits from `Exception`, NOT from `httpx.HTTPError`, so `SLACK_WEBHOOK_URL` with
+        # a typo'd port ("https://hooks.slack.com:notaport/...") escaped a narrower handler
+        # and 500'd the whole evaluation. That discarded a valid RESCHEDULE — the one verdict
+        # that matters most — because a *notification* was misconfigured. idna's
+        # `InvalidCodepoint` escapes the same way. Alerting is best-effort by contract, so
+        # nothing raised in here may take the decision down with it.
+        logger.error("Slack webhook post failed (%s): %s", type(exc).__name__, exc)
         return False
 
     logger.info("Slack alert delivered for %s decision", decision.decision)

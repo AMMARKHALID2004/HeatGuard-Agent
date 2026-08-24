@@ -9,11 +9,18 @@ import { ApiError, evaluate } from "@/lib/api";
 import { DEMO_AOI, DEMO_AOI_LABEL, DEMO_DATE_TIME } from "@/lib/demo";
 import type { EvaluateResponse } from "@/lib/types";
 
+/** What the alert box needs. The backend owns the wording; this only decides layout. */
+interface DisplayError {
+  message: string;
+  hint: string;
+  retryable: boolean;
+}
+
 export default function DashboardPage() {
   const [dateTime, setDateTime] = useState(DEMO_DATE_TIME);
   const [result, setResult] = useState<EvaluateResponse | null>(null);
   const [history, setHistory] = useState<EvaluateResponse[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
   /** On demand only — no polling timer, so development does not burn API credits. */
@@ -29,7 +36,13 @@ export default function DashboardPage() {
       setHistory((previous) => [next, ...previous]);
     } catch (caught) {
       setError(
-        caught instanceof ApiError ? caught.message : "Unexpected error running the agent.",
+        caught instanceof ApiError
+          ? { message: caught.message, hint: caught.hint, retryable: caught.retryable }
+          : {
+              message: "Unexpected error running the agent.",
+              hint: "",
+              retryable: true,
+            },
       );
     } finally {
       setIsEvaluating(false);
@@ -72,12 +85,25 @@ export default function DashboardPage() {
       </header>
 
       {error && (
-        <p
+        <div
           role="alert"
           className="mt-8 rounded-lg border border-risk-high/40 bg-risk-high/10 px-4 py-3 text-sm text-risk-high"
         >
-          {error}
-        </p>
+          <p>{error.message}</p>
+          {/* The hint is for whoever is running the demo, not the site supervisor, so it
+              sits below the message in a quieter weight. */}
+          {error.hint && <p className="mt-1.5 text-xs text-risk-high/70">{error.hint}</p>}
+          {error.retryable && (
+            <button
+              type="button"
+              onClick={runEvaluation}
+              disabled={isEvaluating}
+              className="mt-3 rounded-md border border-risk-high/40 px-3 py-1.5 text-xs font-medium transition hover:bg-risk-high/10 disabled:opacity-50"
+            >
+              {isEvaluating ? "Retrying…" : "Try again"}
+            </button>
+          )}
+        </div>
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.6fr_1fr]">

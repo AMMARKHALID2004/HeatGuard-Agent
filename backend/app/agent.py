@@ -37,7 +37,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Any, Self
 
-from openai import APIStatusError, AsyncOpenAI, OpenAIError
+from openai import APIStatusError, AsyncOpenAI, OpenAIError, RateLimitError
 from pydantic import ValidationError
 
 from .config import Settings
@@ -67,6 +67,30 @@ _LOG_EXCERPT = 400
 
 class AgentError(RuntimeError):
     """Groq was unreachable, misconfigured, or never produced a usable decision."""
+
+
+class AgentNotConfigured(AgentError):
+    """No `GROQ_API_KEY`. An operator problem, not an upstream one — retrying cannot help."""
+
+
+class AgentTimeout(AgentError, TimeoutError):
+    """The reasoning phase outlasted `settings.agent_deadline_seconds`.
+
+    Subclasses the builtin `TimeoutError` too, matching `FortyGuardTimeout`, so a caller can
+    catch either the agent's failures or every timeout in the request.
+    """
+
+
+class AgentRateLimited(AgentError):
+    """Groq returned 429. Distinct because it is the one failure with a *when* attached.
+
+    `retry_after_seconds` is Groq's own `Retry-After` when it sent one, so the API can pass a
+    real number to the dashboard rather than an unqualified "try again later".
+    """
+
+    def __init__(self, message: str, retry_after_seconds: float | None = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class _UnusableReply(Exception):
@@ -212,6 +236,23 @@ def _reply_content(completion: Any) -> str | None:
         return None
 
 
+def _retry_after_seconds(exc: APIStatusError) -> float | None:
+    """Groq's `Retry-After`, in seconds, or `None` if it did not send a usable one.
+
+    Sent as an integer count of seconds in practice, but the header is also allowed to be an
+    HTTP-date, and Groq has been known to append a unit ("2s"). Anything unparseable becomes
+    `None` so the API says "in a few seconds" rather than inventing a number.
+    """
+    response = getattr(exc, "response", None)
+    raw = getattr(response, "headers", {}).get("retry-after") if response else None
+    if not raw:
+        return None
+    try:
+        return float(str(raw).strip().rstrip("s"))
+    except ValueError:
+        return None
+
+
 class HeatRiskAgent:
     """Reason about one heatmap and return a validated `AgentDecision`.
 
@@ -246,7 +287,7 @@ class HeatRiskAgent:
 
     def _build_client(self) -> AsyncOpenAI:
         if not self._settings.groq_api_key:
-            raise AgentError("GROQ_API_KEY is not set")
+            raise AgentNotConfigured("GROQ_API_KEY is not set")
         return AsyncOpenAI(
             api_key=self._settings.groq_api_key,
             base_url=self._settings.groq_base_url,
@@ -286,7 +327,7 @@ class HeatRiskAgent:
             async with asyncio.timeout(deadline):
                 return await self._reason(summary, date_time)
         except TimeoutError as exc:
-            raise AgentError(
+            raise AgentTimeout(
                 f"Groq did not produce a decision within {deadline:g}s "
                 f"(model={self._settings.groq_model})"
             ) from exc
@@ -339,6 +380,14 @@ class HeatRiskAgent:
                 response_format={"type": "json_object"},
                 messages=messages,  # type: ignore[arg-type]
             )
+        except RateLimitError as exc:
+            # The one failure that carries a *when*. Kept distinct from the 4xx below so the
+            # API can answer "wait 20 seconds" instead of "the request was rejected" — on a
+            # free tier during judging this is the likeliest failure of the lot.
+            raise AgentRateLimited(
+                f"Groq rate-limited the request: {str(exc.message)[:300]}",
+                retry_after_seconds=_retry_after_seconds(exc),
+            ) from exc
         except APIStatusError as exc:
             raise AgentError(
                 f"Groq returned HTTP {exc.status_code}: {str(exc.message)[:300]}"

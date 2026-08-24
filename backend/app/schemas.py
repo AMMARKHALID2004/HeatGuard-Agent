@@ -81,3 +81,25 @@ class HealthResponse(BaseModel):
     fortyguard_configured: bool
     groq_configured: bool
     slack_configured: bool
+
+
+class ErrorDetail(BaseModel):
+    """The machine-readable half of a failure. See `app.errors` for the full taxonomy."""
+
+    code: str = Field(description="Stable identifier, e.g. `fortyguard_timeout`.")
+    message: str = Field(description="Human sentence, safe to render as-is.")
+    hint: str = Field(description="Where to look to fix it. Written here, never echoed from an upstream.")
+    retryable: bool = Field(
+        description="Whether repeating the identical request could plausibly succeed."
+    )
+
+
+class ErrorResponse(BaseModel):
+    """Every non-2xx this API returns, including 422, shares this shape.
+
+    `detail` duplicates `error.message` so a client that only knows FastAPI's default body
+    still shows a readable sentence.
+    """
+
+    detail: str
+    error: ErrorDetail
