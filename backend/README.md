@@ -61,8 +61,14 @@ cd backend && uv run python -m unittest discover -v
   decision.
 
 
-Stdlib `unittest` only — no test dependency to install — and pytest will collect both
-as-is if you add one later.
+Stdlib `unittest` only — no test dependency to install.
+
+Do **not** reach for `uv run pytest`: pytest is not a project dependency, so `uv run` falls
+back to whatever `pytest` is on `PATH`. Under Anaconda that is a different interpreter
+without `fastapi` or `openai` installed, and the suite fails at import with
+`ModuleNotFoundError` that looks like broken code rather than the wrong runner. If you want
+pytest, add it to the project first (`uv add --dev pytest`) so `uv run` resolves it from
+`.venv`; it collects these tests as-is.
 
 ### Live check against the real Groq API
 

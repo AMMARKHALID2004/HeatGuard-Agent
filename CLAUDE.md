@@ -92,6 +92,18 @@ to GitHub — not even temporarily, not even in a private repo. This applies to
   secrets) is committed, so teammates know what's required
 - Before every commit, scan the diff for anything that looks like a real key/token/secret
   and stop to flag it rather than committing it
+- **Never open, edit, blank out, or "sanitize" the real `.env` file itself for any
+  reason** — not to protect a secret, not to clean up before a commit, not for any other
+  purpose. If `.env` isn't properly gitignored and a secret risks being committed, the fix
+  is `git rm --cached .env` (untrack it) plus fixing `.gitignore` — never modifying the
+  file's contents. If you ever think a value in `.env` needs to change or be removed, stop
+  and tell me instead of editing it yourself.
+- **Never run `cp .env.example .env` (or any command that overwrites `.env`) if `.env`
+  already exists.** This silently destroys real keys by overwriting them with blank
+  placeholders. Only ever create `.env` from `.env.example` once, the very first time the
+  file doesn't exist yet — check with something like `[ -f .env ] || cp .env.example .env`
+  rather than an unconditional copy. If `.env` already exists, never touch it as part of
+  any setup/sync command, no matter how routine that command seems.
 
 ## End of every session
 1. Scan for secrets per the rule above before committing anything.

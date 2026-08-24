@@ -12,10 +12,13 @@ export function AoiMap({
   ring,
   riskLevel,
   label,
+  isPending = false,
 }: {
   ring: Coordinate[];
   riskLevel: RiskLevel | null;
   label: string;
+  /** Dims the outline while an evaluation runs, so the tint is not read as current. */
+  isPending?: boolean;
 }) {
   const fill = riskLevel ? RISK_STYLES[riskLevel].fill : NEUTRAL_FILL;
   const points = normalizeRing(ring);
@@ -29,9 +32,15 @@ export function AoiMap({
 
       <svg
         viewBox="0 0 100 100"
-        className="mt-4 aspect-square w-full rounded-lg bg-slate-900/70"
+        className={`mt-4 aspect-square w-full rounded-lg bg-slate-900/70 transition-opacity ${
+          isPending ? "opacity-40" : "opacity-100"
+        }`}
         role="img"
-        aria-label={`AOI outline, ${ring.length - 1} vertices`}
+        aria-label={
+          riskLevel
+            ? `AOI outline, ${ring.length - 1} vertices, ${riskLevel} risk`
+            : `AOI outline, ${ring.length - 1} vertices, not yet evaluated`
+        }
       >
         <defs>
           <pattern id="aoi-grid" width="10" height="10" patternUnits="userSpaceOnUse">
@@ -54,6 +63,31 @@ export function AoiMap({
           strokeLinejoin="round"
         />
       </svg>
+
+      {/* The thresholds are stated on screen because the colour is otherwise unexplained,
+          and because they are fixed in `backend/app/risk.py` rather than being the model's
+          call — worth showing a judge. The active band is highlighted. */}
+      <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {(
+          [
+            ["LOW", "< 30°C"],
+            ["MEDIUM", "30–33°C"],
+            ["HIGH", "≥ 33°C"],
+          ] as const
+        ).map(([level, band]) => (
+          <li key={level} className="flex items-center gap-1.5">
+            <span
+              className={`size-2 rounded-full ${RISK_STYLES[level].dot} ${
+                riskLevel && riskLevel !== level ? "opacity-30" : ""
+              }`}
+              aria-hidden
+            />
+            <span className={riskLevel === level ? RISK_STYLES[level].text : "text-slate-500"}>
+              {band}
+            </span>
+          </li>
+        ))}
+      </ul>
 
       <ul className="mt-4 space-y-1 font-mono text-xs text-slate-500">
         {ring.slice(0, -1).map(([lon, lat], index) => (

@@ -1,6 +1,21 @@
+import { type MockScenarioId, isMockMode, playScenario } from "./mock";
 import type { ApiErrorBody, ApiErrorCode, EvaluateRequest, EvaluateResponse } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/**
+ * The port `API_URL` actually points at, for use in the "backend is down" hint.
+ *
+ * Hardcoding 8000 there was wrong whenever `NEXT_PUBLIC_API_URL` named a different port: the
+ * dashboard would tell you to start a server on a port it was not going to call.
+ */
+function apiPort(): string {
+  try {
+    return new URL(API_URL).port || "8000";
+  } catch {
+    return "8000";
+  }
+}
 
 /**
  * A failure from the backend, already carrying a sentence written to be displayed.
@@ -74,11 +89,27 @@ async function readError(response: Response): Promise<ApiError> {
  *
  * Throws `ApiError` for every failure, including the network being down, so callers have
  * one type to catch and one `message` to render.
+ *
+ * With `USE_MOCK_DATA` set this answers from `lib/mock.ts` and never touches the network.
+ * The mock path is deliberately routed through the same `ApiError` constructor as the real
+ * one, so an error the dashboard renders offline is the same object it renders in production.
  */
 export async function evaluate(
   request: EvaluateRequest,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+    /** Which sample to play. Ignored unless `USE_MOCK_DATA` is on. */
+    mockScenario?: MockScenarioId;
+  } = {},
 ): Promise<EvaluateResponse> {
+  if (isMockMode()) {
+    const played = await playScenario(options.mockScenario ?? "high", options.signal);
+    if (played.ok) return played.response;
+    const { status, body } = played.scenario.failure!;
+    const { code, message, hint, retryable } = body.error;
+    throw new ApiError(message, status, code, hint, retryable);
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}/api/evaluate`, {
@@ -96,7 +127,8 @@ export async function evaluate(
       `Could not reach the backend at ${API_URL}.`,
       0,
       "unreachable",
-      "Start it with `uvicorn app.main:app --reload --port 8000` from backend/.",
+      `Start it with \`uvicorn app.main:app --reload --port ${apiPort()}\` from backend/, or set ` +
+        "USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
       true,
     );
   }
