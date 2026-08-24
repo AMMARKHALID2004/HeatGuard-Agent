@@ -19,10 +19,21 @@ export const DEMO_AOI: Coordinate[] = [
 export const DEMO_AOI_LABEL = "Construction site — Lower Manhattan, NYC";
 
 /**
- * Default work window as a `datetime-local` value — also the prototype's validated one.
- * A fixed constant rather than `new Date()` so server and client render identical HTML.
+ * The default work window: the current local hour, formatted for
+ * `<input type="datetime-local">` (`YYYY-MM-DDTHH:mm`, local time, no zone).
  *
- * NOTE: this is a 2024 date. Re-test with a current date before the demo and update it if
- * FortyGuard returns data for it; `filter_type` may constrain which dates are queryable.
+ * A function, not a constant — the agent assesses live temperature for the shift you are about
+ * to run, so the default is always "now", never a baked-in date. Call it on the client only
+ * (see `page.tsx`): computing "now" during server render and again on hydration yields two
+ * different strings and trips a React hydration mismatch, which is exactly why this used to be
+ * a fixed 2024 constant. Minutes are zeroed because a shift starts on the hour.
  */
-export const DEMO_DATE_TIME = "2024-07-15T14:00";
+export function currentWorkWindow(now: Date = new Date()): string {
+  const local = new Date(now);
+  local.setMinutes(0, 0, 0);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return (
+    `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}` +
+    `T${pad(local.getHours())}:${pad(local.getMinutes())}`
+  );
+}

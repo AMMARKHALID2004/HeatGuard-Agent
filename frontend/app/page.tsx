@@ -9,7 +9,7 @@ import { HistoryList } from "@/components/HistoryList";
 import { MockBanner } from "@/components/MockBanner";
 import { PendingCard } from "@/components/PendingCard";
 import { ApiError, evaluate } from "@/lib/api";
-import { DEMO_AOI, DEMO_AOI_LABEL, DEMO_DATE_TIME } from "@/lib/demo";
+import { DEMO_AOI, DEMO_AOI_LABEL, currentWorkWindow } from "@/lib/demo";
 import { DEFAULT_MOCK_SCENARIO, type MockScenarioId, isMockMode } from "@/lib/mock";
 import type { EvaluateResponse } from "@/lib/types";
 
@@ -34,7 +34,9 @@ const UNEXPECTED: DisplayError = {
 };
 
 export default function DashboardPage() {
-  const [dateTime, setDateTime] = useState(DEMO_DATE_TIME);
+  // Empty until the client fills it, so server and client first render identically. `now`
+  // is only knowable in the browser; see `currentWorkWindow`.
+  const [dateTime, setDateTime] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [error, setError] = useState<DisplayError | null>(null);
@@ -52,6 +54,11 @@ export default function DashboardPage() {
   // Abort whatever is running if this page goes away, so a resolved fetch cannot call
   // `setState` on an unmounted component — and, in mock mode, so a pending timer is cleared.
   useEffect(() => () => inFlight.current?.abort(), []);
+
+  // Default the work window to the current local hour, once, on the client. Kept out of the
+  // `useState` initializer on purpose: computing "now" on the server too would render a
+  // different string than the browser and trip a hydration mismatch.
+  useEffect(() => setDateTime((current) => current || currentWorkWindow()), []);
 
   const runEvaluation = useCallback(async () => {
     // A second click supersedes the first rather than racing it: without this, two responses
@@ -120,7 +127,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={runEvaluation}
-            disabled={isEvaluating}
+            disabled={isEvaluating || !dateTime}
             className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isEvaluating ? "Running…" : "Run Evaluation"}
