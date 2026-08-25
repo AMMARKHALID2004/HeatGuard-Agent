@@ -16,7 +16,14 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI
 
-from app.agent import MAX_ATTEMPTS, SDK_MAX_RETRIES, AgentError, HeatRiskAgent
+from app.agent import (
+    MAX_ATTEMPTS,
+    SDK_MAX_RETRIES,
+    AgentError,
+    HeatRiskAgent,
+    build_system_prompt,
+)
+from app.climate import ZONES
 from app.config import Settings
 from app.risk import decision_for, reason_for, recommendation_for
 from app.services.slack import _build_message  # the alert body itself is under test
@@ -179,20 +186,26 @@ class RequestTests(AgentTestCase):
         self.assertEqual(body["response_format"], {"type": "json_object"})
         self.assertEqual(body["temperature"], 0.2)
 
-    async def test_system_prompt_states_the_thresholds_and_the_mapping(self):
-        groq = ScriptedGroq()
-        agent = self.build(groq)
+    def test_system_prompt_states_each_zones_thresholds_and_the_mapping(self):
+        """The prompt is built per zone now, so it must carry *that zone's* cutoffs."""
+        for zone in (ZONES["mixed-humid"], ZONES["hot-dry"]):
+            with self.subTest(zone=zone.name):
+                prompt = build_system_prompt(zone)
+                self.assertIn(f"{zone.medium_threshold_c:g} C", prompt)
+                self.assertIn(f"{zone.high_threshold_c:g} C", prompt)
+                # The zone is named so the model can explain why this cutoff applies.
+                self.assertIn(zone.name, prompt)
+                for fragment in ("PROCEED", "MODIFY", "RESCHEDULE"):
+                    self.assertIn(fragment, prompt)
+                # The never-invent rule must survive prompt edits.
+                self.assertIn("null", prompt)
+                self.assertRegex(prompt, r"[Nn]ever invent")
 
-        await agent.assess(HOT, date_time=WHEN)
-
-        system = groq.messages()[0]
-        self.assertEqual(system["role"], "system")
-        prompt = system["content"]
-        for fragment in ("30 C", "33 C", "PROCEED", "MODIFY", "RESCHEDULE"):
-            self.assertIn(fragment, prompt)
-        # The never-invent rule must survive prompt edits.
-        self.assertIn("null", prompt)
-        self.assertRegex(prompt, r"[Nn]ever invent")
+    def test_a_hot_zone_prompt_does_not_carry_the_default_national_cutoffs(self):
+        """Proof the numbers actually vary: Hot-Dry must not mention 30/33."""
+        prompt = build_system_prompt(ZONES["hot-dry"])
+        self.assertNotIn("30 C", prompt)
+        self.assertNotIn("33 C", prompt)
 
     async def test_user_prompt_carries_measured_stats_not_the_raw_grid(self):
         groq = ScriptedGroq()
@@ -335,6 +348,72 @@ class ThresholdEnforcementTests(AgentTestCase):
 
         self.assertIsNone(decision.peak_temperature)
         self.assertIsNone(decision.average_temperature)
+
+
+class ClimateZoneTests(AgentTestCase):
+    """The same measured peak must classify differently depending on the site's zone.
+
+    This is the whole point of the feature: 35 °C is a RESCHEDULE in the Northeast default
+    but an ordinary working temperature in Phoenix. The model is told to reschedule every
+    time; `enforce_thresholds` re-derives the verdict from the zone's cutoffs regardless.
+    """
+
+    # peak 35: HIGH in Mixed-Humid (>=33), MEDIUM in Hot-Humid (34<=35<37), LOW in Hot-Dry (<36).
+    WARMISH: dict[str, Any] = {"cells": [{"temperature": 35.0}, {"temperature": 35.0}]}
+
+    async def test_the_same_peak_diverges_across_three_zones(self):
+        cases = [
+            (ZONES["mixed-humid"], "HIGH", "RESCHEDULE"),
+            (ZONES["hot-humid"], "MEDIUM", "MODIFY"),
+            (ZONES["hot-dry"], "LOW", "PROCEED"),
+        ]
+        for zone, expected_risk, expected_decision in cases:
+            with self.subTest(zone=zone.name):
+                # The model always argues for the hottest verdict; the zone decides.
+                groq = ScriptedGroq(
+                    ok(
+                        decision_json(
+                            risk_level="HIGH",
+                            decision="RESCHEDULE",
+                            peak_temperature=35.0,
+                            average_temperature=35.0,
+                        )
+                    )
+                )
+                agent = self.build(groq)
+
+                decision = await agent.assess(self.WARMISH, date_time=WHEN, zone=zone)
+
+                self.assertEqual(decision.peak_temperature, 35.0)
+                self.assertEqual(decision.risk_level, expected_risk)
+                self.assertEqual(decision.decision, expected_decision)
+
+    async def test_the_zones_thresholds_and_name_reach_the_model(self):
+        groq = ScriptedGroq()
+        agent = self.build(groq)
+
+        await agent.assess(self.WARMISH, date_time=WHEN, zone=ZONES["hot-dry"])
+
+        system = groq.messages()[0]["content"]
+        self.assertIn("36 C", system)  # Hot-Dry MEDIUM cutoff
+        self.assertIn("39 C", system)  # Hot-Dry HIGH cutoff
+        self.assertIn("Hot-Dry", system)
+        user = json.loads(groq.messages()[1]["content"])
+        self.assertEqual(user["climate_zone"], "Hot-Dry")
+
+    async def test_omitting_the_zone_keeps_the_original_northeast_behavior(self):
+        """No zone argument -> the default Mixed-Humid 30/33, unchanged from before."""
+        groq = ScriptedGroq(
+            ok(decision_json(risk_level="LOW", decision="PROCEED",
+                             peak_temperature=35.0, average_temperature=35.0))
+        )
+        agent = self.build(groq)
+
+        decision = await agent.assess(self.WARMISH, date_time=WHEN)
+
+        # 35 >= 33 under the default zone, so a hallucinated LOW is corrected to HIGH.
+        self.assertEqual(decision.risk_level, "HIGH")
+        self.assertEqual(decision.decision, "RESCHEDULE")
 
 
 class ProseConsistencyTests(AgentTestCase):

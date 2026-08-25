@@ -5,8 +5,31 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .climate import ClimateZone
+
 RiskLevel = Literal["LOW", "MEDIUM", "HIGH"]
 Decision = Literal["PROCEED", "MODIFY", "RESCHEDULE"]
+
+
+class ClimateZoneInfo(BaseModel):
+    """The resolved climate zone and the thresholds used for one evaluation.
+
+    Returned to the dashboard so it can show which zone's rules applied and their exact
+    LOW/MEDIUM/HIGH cutoffs (CLAUDE.md → point 6/9). The frontend never computes these — it
+    displays what the backend resolved, keeping the zone table server-side only.
+    """
+
+    name: str = Field(description="Human-readable zone name, e.g. 'Hot-Dry'.")
+    medium_threshold_c: float = Field(description="LOW/MEDIUM boundary, peak °C.")
+    high_threshold_c: float = Field(description="MEDIUM/HIGH boundary, peak °C.")
+
+    @classmethod
+    def from_zone(cls, zone: ClimateZone) -> "ClimateZoneInfo":
+        return cls(
+            name=zone.name,
+            medium_threshold_c=zone.medium_threshold_c,
+            high_threshold_c=zone.high_threshold_c,
+        )
 
 
 class EvaluateRequest(BaseModel):
@@ -24,6 +47,13 @@ class EvaluateRequest(BaseModel):
     date_time: datetime = Field(
         ...,
         description="Start of the work window being evaluated, ISO 8601.",
+    )
+    state: str | None = Field(
+        None,
+        description=(
+            "US state (USPS code) of the work site, used to resolve the climate zone. "
+            "Unknown or omitted falls back to the default zone server-side."
+        ),
     )
     filter_type: int = Field(
         1,
@@ -70,9 +100,24 @@ class AgentDecision(BaseModel):
 class EvaluateResponse(AgentDecision):
     """`AgentDecision` plus request-scoped metadata the dashboard uses for history."""
 
+    climate_zone: ClimateZoneInfo
     activity_id: str | None = None
     evaluated_at: datetime
     alert_sent: bool = False
+
+
+class GeocodeResult(BaseModel):
+    """One US location suggestion, already tagged with its resolved climate zone.
+
+    The zone is resolved server-side (`app.climate`) so the dashboard can preview which
+    thresholds a location will use before the crew even runs an evaluation.
+    """
+
+    label: str = Field(description="Display name for the suggestion, e.g. 'Phoenix, Arizona'.")
+    lat: float
+    lon: float
+    state: str | None = Field(None, description="Resolved USPS state code, or null.")
+    climate_zone: ClimateZoneInfo
 
 
 class HealthResponse(BaseModel):

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # --- Upstream endpoints ---
     fortyguard_base_url: str = "https://api.fortyguard.com/v1"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    # OpenStreetMap Nominatim, for the "search any US location" box. Keyless; proxied
+    # server-side so a descriptive User-Agent can be sent (browsers forbid setting one).
+    nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     # Groq retired the Llama family: `llama-3.3-70b-versatile` (what CLAUDE.md originally
     # specified) now 404s with `model_not_found`. This is Groq's largest production chat
     # model, and it supports the `json_object` response format the agent depends on.

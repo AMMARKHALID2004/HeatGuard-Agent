@@ -1,15 +1,22 @@
-"""Fixed risk thresholds.
+"""Fixed risk thresholds, resolved per climate zone.
 
 These live in code, not in the LLM prompt's discretion. The prompt states them so the
 model's prose stays consistent, but `enforce_thresholds` is what actually decides
 (CLAUDE.md → Architecture step 4: "do not let the LLM decide thresholds itself").
+
+The two cutoffs are no longer national: they come from the site's `ClimateZone`
+(`app.climate`), because a peak that is safe in Phoenix is dangerous in Minnesota. Every
+function takes a `zone`, defaulting to `DEFAULT_ZONE` (Mixed-Humid, 30/33), so callers and
+tests that predate zones keep the original Northeast behavior unchanged.
 """
 
+from .climate import DEFAULT_ZONE, ClimateZone
 from .schemas import AgentDecision, Decision, RiskLevel
 
-# Peak temperature in °C.
-MEDIUM_THRESHOLD_C = 30.0
-HIGH_THRESHOLD_C = 33.0
+# The default zone's cutoffs, kept as module constants for any caller still referencing
+# the old national numbers. Peak temperature in °C.
+MEDIUM_THRESHOLD_C = DEFAULT_ZONE.medium_threshold_c
+HIGH_THRESHOLD_C = DEFAULT_ZONE.high_threshold_c
 
 _DECISION_FOR_RISK: dict[RiskLevel, Decision] = {
     "LOW": "PROCEED",
@@ -18,11 +25,11 @@ _DECISION_FOR_RISK: dict[RiskLevel, Decision] = {
 }
 
 
-def classify(peak_temperature_c: float) -> RiskLevel:
-    """LOW < 30 °C, MEDIUM 30–33 °C, HIGH >= 33 °C."""
-    if peak_temperature_c >= HIGH_THRESHOLD_C:
+def classify(peak_temperature_c: float, zone: ClimateZone = DEFAULT_ZONE) -> RiskLevel:
+    """LOW below the zone's MEDIUM cutoff, MEDIUM up to its HIGH cutoff, HIGH at or above."""
+    if peak_temperature_c >= zone.high_threshold_c:
         return "HIGH"
-    if peak_temperature_c >= MEDIUM_THRESHOLD_C:
+    if peak_temperature_c >= zone.medium_threshold_c:
         return "MEDIUM"
     return "LOW"
 
@@ -43,25 +50,27 @@ UNKNOWN_REASON = (
 )
 
 
-def reason_for(peak_temperature_c: float) -> str:
+def reason_for(peak_temperature_c: float, zone: ClimateZone = DEFAULT_ZONE) -> str:
     """A deterministic `reason`, for when the model's own prose cannot be trusted.
 
     Used when the model reported a temperature that disagreed with the measurement: prose
-    narrating a number that just got corrected would contradict the card it sits on.
+    narrating a number that just got corrected would contradict the card it sits on. Names
+    the zone so the sentence explains why this cutoff and not the national one.
     """
-    if peak_temperature_c >= HIGH_THRESHOLD_C:
+    if peak_temperature_c >= zone.high_threshold_c:
         return (
             f"Measured peak of {peak_temperature_c:g} C is at or above the "
-            f"{HIGH_THRESHOLD_C:g} C HIGH threshold."
+            f"{zone.high_threshold_c:g} C HIGH threshold for the {zone.name} zone."
         )
-    if peak_temperature_c >= MEDIUM_THRESHOLD_C:
+    if peak_temperature_c >= zone.medium_threshold_c:
         return (
             f"Measured peak of {peak_temperature_c:g} C falls in the "
-            f"{MEDIUM_THRESHOLD_C:g}-{HIGH_THRESHOLD_C:g} C MEDIUM band."
+            f"{zone.medium_threshold_c:g}-{zone.high_threshold_c:g} C MEDIUM band for the "
+            f"{zone.name} zone."
         )
     return (
         f"Measured peak of {peak_temperature_c:g} C is below the "
-        f"{MEDIUM_THRESHOLD_C:g} C MEDIUM threshold."
+        f"{zone.medium_threshold_c:g} C MEDIUM threshold for the {zone.name} zone."
     )
 
 
@@ -70,6 +79,7 @@ def reason_for(peak_temperature_c: float) -> str:
 # it cannot be shown beside the enforced one — the dashboard card and the Slack alert both
 # print it verbatim, and "no special heat precautions needed" under a RESCHEDULE header is
 # worse than no advice at all. Deliberately generic: this is a floor, not the model's job.
+# Keyed on `risk_level` alone — the guidance is about the band, not the zone's exact cutoff.
 _RECOMMENDATION_FOR_RISK: dict[RiskLevel, str] = {
     "LOW": (
         "Standard hot-weather practice is enough: drinking water at every work position, "
@@ -91,11 +101,15 @@ def recommendation_for(risk_level: RiskLevel) -> str:
     return _RECOMMENDATION_FOR_RISK[risk_level]
 
 
-def enforce_thresholds(decision: AgentDecision) -> AgentDecision:
+def enforce_thresholds(
+    decision: AgentDecision, zone: ClimateZone = DEFAULT_ZONE
+) -> AgentDecision:
     """Overwrite the model's `risk_level`/`decision` with the deterministic mapping.
 
     Applied on every path, including the no-reading one, so `risk_level` and `decision` can
     never contradict each other and a go-ahead can never rest on the model's own judgement.
+    Classification uses `zone`'s thresholds, so the same peak can land in different bands
+    depending on where the site is.
 
     When the mapping *disagrees* with what the model concluded, its `recommendation` and
     `reason` are replaced too. They were written to argue for the verdict it picked, and the
@@ -107,8 +121,8 @@ def enforce_thresholds(decision: AgentDecision) -> AgentDecision:
         # drop would sit next to a blank peak on the card.
         reason = UNKNOWN_REASON
     else:
-        risk_level = classify(decision.peak_temperature)
-        reason = reason_for(decision.peak_temperature)
+        risk_level = classify(decision.peak_temperature, zone)
+        reason = reason_for(decision.peak_temperature, zone)
 
     outcome = decision_for(risk_level)
     updates: dict[str, object] = {"risk_level": risk_level, "decision": outcome}
@@ -122,4 +136,3 @@ def enforce_thresholds(decision: AgentDecision) -> AgentDecision:
         updates["reason"] = reason
 
     return decision.model_copy(update=updates)
-

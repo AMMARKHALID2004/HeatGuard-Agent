@@ -17,10 +17,32 @@
  *    invented data for a measurement, least of all during judging.
  */
 
-import type { ApiErrorBody, EvaluateResponse } from "./types";
+import type { ApiErrorBody, ClimateZoneInfo, EvaluateResponse, GeocodeResult } from "./types";
 
 /** A response minus the timestamp, which is stamped when the scenario is played. */
 type Sample = Omit<EvaluateResponse, "evaluated_at">;
+
+/**
+ * Zone previews for mock mode, mirroring `backend/app/climate.py`. Mock mode never resolves
+ * zones itself — it hands back the same shape the real backend would, so the dashboard's
+ * zone/threshold display is exercised offline exactly as it is against a live API.
+ */
+const ZONE_MIXED_HUMID: ClimateZoneInfo = {
+  name: "Mixed-Humid",
+  medium_threshold_c: 30,
+  high_threshold_c: 33,
+};
+const ZONE_HOT_DRY: ClimateZoneInfo = { name: "Hot-Dry", medium_threshold_c: 36, high_threshold_c: 39 };
+const ZONE_HOT_HUMID: ClimateZoneInfo = {
+  name: "Hot-Humid",
+  medium_threshold_c: 34,
+  high_threshold_c: 37,
+};
+const ZONE_COLD: ClimateZoneInfo = {
+  name: "Cold / Northern",
+  medium_threshold_c: 27,
+  high_threshold_c: 30,
+};
 
 export type MockScenarioId =
   | "low"
@@ -58,6 +80,7 @@ const LOW: Sample = {
   reason:
     "Peak temperature of 24.6 °C across the site is below the 30 °C LOW threshold, so no " +
     "heat-specific changes to the shift are warranted.",
+  climate_zone: ZONE_MIXED_HUMID,
   activity_id: "mock-low-8c14",
   alert_sent: false,
 };
@@ -73,6 +96,7 @@ const MEDIUM: Sample = {
   reason:
     "Peak temperature of 31.4 °C falls in the 30–33 °C MEDIUM band. The shift is workable, " +
     "but continuous exertion through the afternoon carries real heat-illness risk.",
+  climate_zone: ZONE_MIXED_HUMID,
   activity_id: "mock-med-4b7f",
   alert_sent: false,
 };
@@ -89,6 +113,7 @@ const HIGH: Sample = {
   reason:
     "Peak temperature of 41.2 °C is well above the 33 °C HIGH threshold, and the site " +
     "average of 38.4 °C means there is no cooler corner to rotate people through.",
+  climate_zone: ZONE_MIXED_HUMID,
   activity_id: "mock-high-1e90",
   alert_sent: true,
 };
@@ -112,6 +137,7 @@ const NO_READINGS: Sample = {
   reason:
     "No usable temperature readings were found for this area, so risk could not be measured. " +
     "Defaulting to MEDIUM rather than issuing a go-ahead the data cannot support.",
+  climate_zone: ZONE_MIXED_HUMID,
   activity_id: "mock-null-77a2",
   alert_sent: false,
 };

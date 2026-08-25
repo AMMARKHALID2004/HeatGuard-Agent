@@ -40,8 +40,9 @@ from typing import Any, Self
 from openai import APIStatusError, AsyncOpenAI, OpenAIError, RateLimitError
 from pydantic import ValidationError
 
+from .climate import DEFAULT_ZONE, ClimateZone
 from .config import Settings
-from .risk import HIGH_THRESHOLD_C, MEDIUM_THRESHOLD_C, enforce_thresholds, reason_for
+from .risk import enforce_thresholds, reason_for
 from .schemas import AgentDecision
 from .services.heatmap import summarize_heatmap
 
@@ -97,18 +98,32 @@ class _UnusableReply(Exception):
     """Internal: this reply cannot become an `AgentDecision`, so it earns a repair turn."""
 
 
-SYSTEM_PROMPT = f"""\
+def build_system_prompt(zone: ClimateZone) -> str:
+    """The system prompt for one site's climate zone.
+
+    Per-request, not an import-time constant: the LOW/MEDIUM/HIGH cutoffs and the zone name
+    are the site's, because a peak that is safe in one region is dangerous in another. Every
+    other rule (never invent a temperature, null when unavailable, the LOW->PROCEED /
+    MEDIUM->MODIFY / HIGH->RESCHEDULE mapping, JSON-only) is fixed. The model still never
+    chooses the thresholds — `app.risk.enforce_thresholds` re-derives the verdict from these
+    same numbers; the prompt only mirrors them so the model's prose stays consistent.
+    """
+    medium = zone.medium_threshold_c
+    high = zone.high_threshold_c
+    return f"""\
 You are HeatGuard, a heat-safety agent for outdoor construction crews. You are given
 temperature statistics for one work area and one work window, and you return a go/no-go
 decision for that shift.
 
-Classify on PEAK temperature in Celsius. These thresholds are fixed — never adjust them,
-reinterpret them, or substitute your own judgement:
+This site is in the {zone.name} US climate zone. Safe-work temperatures are regional —
+crews acclimatized to a hotter zone tolerate a higher peak — so classify on PEAK
+temperature in Celsius against THIS zone's thresholds. They are fixed for this request —
+never adjust them, reinterpret them, or substitute your own judgement:
 
   risk_level   peak temperature                  decision
-  LOW          peak < {MEDIUM_THRESHOLD_C:g} C                        PROCEED
-  MEDIUM       {MEDIUM_THRESHOLD_C:g} C <= peak < {HIGH_THRESHOLD_C:g} C              MODIFY
-  HIGH         peak >= {HIGH_THRESHOLD_C:g} C                       RESCHEDULE
+  LOW          peak < {medium:g} C                        PROCEED
+  MEDIUM       {medium:g} C <= peak < {high:g} C              MODIFY
+  HIGH         peak >= {high:g} C                       RESCHEDULE
 
 Never invent, estimate, extrapolate, or fill in a temperature. Use only the numbers you
 were given. If a temperature was not provided, return null for it and say it was
@@ -120,7 +135,8 @@ committing the crew. Do not clear the shift on missing data.
 
 Write `recommendation` as one or two sentences of concrete guidance a site supervisor can
 act on today: shift timing, hydration and rest cadence, shade, task swaps. No hedging.
-Write `reason` as one sentence naming the peak temperature and the threshold it crossed.
+Write `reason` as one sentence naming the peak temperature and the threshold it crossed;
+you may name the {zone.name} zone to explain why this cutoff applies.
 
 Reply with a single JSON object and nothing else — no prose, no markdown fences — with
 exactly these six keys:
@@ -141,11 +157,14 @@ _REPAIR_INSTRUCTION = (
 )
 
 
-def build_user_prompt(summary: dict[str, Any], date_time: datetime) -> str:
+def build_user_prompt(
+    summary: dict[str, Any], date_time: datetime, zone: ClimateZone = DEFAULT_ZONE
+) -> str:
     """Hand the model the measured statistics — never the raw grid."""
     return json.dumps(
         {
             "work_window_start": date_time.isoformat(),
+            "climate_zone": zone.name,
             "peak_temperature_c": summary["peak_temperature"],
             "average_temperature_c": summary["average_temperature"],
             "reading_count": summary["reading_count"],
@@ -178,7 +197,9 @@ def _parse(content: str) -> AgentDecision:
         raise _UnusableReply(_describe(exc)) from exc
 
 
-def _reconcile(decision: AgentDecision, summary: dict[str, Any]) -> AgentDecision:
+def _reconcile(
+    decision: AgentDecision, summary: dict[str, Any], zone: ClimateZone = DEFAULT_ZONE
+) -> AgentDecision:
     """Replace the model's temperatures with the measured ones, then re-apply thresholds.
 
     A mismatch means the model edited a number it was told to copy. That is logged and
@@ -205,9 +226,9 @@ def _reconcile(decision: AgentDecision, summary: dict[str, Any]) -> AgentDecisio
         # measurement. (`enforce_thresholds` replaces this again if the peak is null.)
         peak = summary["peak_temperature"]
         if peak is not None:
-            updates["reason"] = reason_for(peak)
+            updates["reason"] = reason_for(peak, zone)
         decision = decision.model_copy(update=updates)
-    return enforce_thresholds(decision)
+    return enforce_thresholds(decision, zone)
 
 
 def _reply_content(completion: Any) -> str | None:
@@ -304,16 +325,20 @@ class HeatRiskAgent:
             )
         return self._openai
 
-    async def assess(self, heatmap: Any, *, date_time: datetime) -> AgentDecision:
+    async def assess(
+        self, heatmap: Any, *, date_time: datetime, zone: ClimateZone = DEFAULT_ZONE
+    ) -> AgentDecision:
         """Summarize `heatmap`, reason about it, and return a validated decision.
 
-        Raises `AgentError` if Groq is unreachable or misconfigured, if it fails to produce
-        a schema-valid decision within `MAX_ATTEMPTS`, or if the whole phase outlasts
-        `settings.agent_deadline_seconds`.
+        `zone` supplies the site's thresholds, so the same measured peak can classify
+        differently depending on where the work is. Raises `AgentError` if Groq is
+        unreachable or misconfigured, if it fails to produce a schema-valid decision within
+        `MAX_ATTEMPTS`, or if the whole phase outlasts `settings.agent_deadline_seconds`.
         """
         summary = summarize_heatmap(heatmap)
         logger.info(
-            "Assessing heatmap: readings=%s peak=%s average=%s",
+            "Assessing heatmap (zone=%s): readings=%s peak=%s average=%s",
+            zone.name,
             summary["reading_count"],
             summary["peak_temperature"],
             summary["average_temperature"],
@@ -325,18 +350,20 @@ class HeatRiskAgent:
             # per-request timeout is not enough: retries multiply it, and a free-tier
             # `Retry-After` can be far longer than the request itself.
             async with asyncio.timeout(deadline):
-                return await self._reason(summary, date_time)
+                return await self._reason(summary, date_time, zone)
         except TimeoutError as exc:
             raise AgentTimeout(
                 f"Groq did not produce a decision within {deadline:g}s "
                 f"(model={self._settings.groq_model})"
             ) from exc
 
-    async def _reason(self, summary: dict[str, Any], date_time: datetime) -> AgentDecision:
+    async def _reason(
+        self, summary: dict[str, Any], date_time: datetime, zone: ClimateZone = DEFAULT_ZONE
+    ) -> AgentDecision:
         """The attempt loop: one call, then at most one repair turn."""
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(summary, date_time)},
+            {"role": "system", "content": build_system_prompt(zone)},
+            {"role": "user", "content": build_user_prompt(summary, date_time, zone)},
         ]
 
         problem = ""
@@ -364,7 +391,7 @@ class HeatRiskAgent:
                     ]
                 continue
 
-            return _reconcile(decision, summary)
+            return _reconcile(decision, summary, zone)
 
         raise AgentError(
             f"Groq did not return a schema-valid decision in {MAX_ATTEMPTS} attempts "

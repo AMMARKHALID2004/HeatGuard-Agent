@@ -13,14 +13,22 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from ..agent import AgentError, HeatRiskAgent
+from ..climate import resolve_zone
 from ..config import Settings, get_settings
-from ..errors import as_api_error
-from ..schemas import ErrorResponse, EvaluateRequest, EvaluateResponse
+from ..errors import ApiError, as_api_error
+from ..schemas import (
+    ClimateZoneInfo,
+    ErrorResponse,
+    EvaluateRequest,
+    EvaluateResponse,
+    GeocodeResult,
+)
 from ..services import slack
 from ..services.fortyguard import FortyGuardClient, FortyGuardError
+from ..services.geocode import GeocodeError, search as geocode_search
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +73,7 @@ async def evaluate(
 ) -> EvaluateResponse:
     """Read the area's temperatures, assess them, and return a go/no-go decision."""
     started = datetime.now(timezone.utc)
+    zone = resolve_zone(request.state)
     try:
         async with FortyGuardClient(settings) as fortyguard:
             activity_id, heatmap = await fortyguard.fetch_heatmap(
@@ -75,7 +84,9 @@ async def evaluate(
             )
 
         async with HeatRiskAgent(settings) as agent:
-            decision = await agent.assess(heatmap, date_time=request.date_time)
+            decision = await agent.assess(
+                heatmap, date_time=request.date_time, zone=zone
+            )
     except (FortyGuardError, AgentError, httpx.HTTPError, httpx.InvalidURL) as exc:
         # `as_api_error` re-raises anything it does not recognise, so an unexpected
         # exception still surfaces as a 500 with a traceback rather than being flattened
@@ -90,9 +101,10 @@ async def evaluate(
         alert_sent = await slack.send_alert(settings, decision)
 
     logger.info(
-        "Evaluation complete in %.1fs: activity_id=%s risk=%s decision=%s peak=%s alert_sent=%s",
+        "Evaluation complete in %.1fs: activity_id=%s zone=%s risk=%s decision=%s peak=%s alert_sent=%s",
         (datetime.now(timezone.utc) - started).total_seconds(),
         activity_id,
+        zone.name,
         decision.risk_level,
         decision.decision,
         decision.peak_temperature,
@@ -101,7 +113,40 @@ async def evaluate(
 
     return EvaluateResponse(
         **decision.model_dump(),
+        climate_zone=ClimateZoneInfo.from_zone(zone),
         activity_id=activity_id,
         evaluated_at=datetime.now(timezone.utc),
         alert_sent=alert_sent,
     )
+
+
+@router.get(
+    "/geocode",
+    response_model=list[GeocodeResult],
+    responses={
+        status.HTTP_502_BAD_GATEWAY: {
+            "model": ErrorResponse,
+            "description": "The location search service was unreachable or returned an error.",
+        },
+    },
+    summary="Search US locations, each tagged with its climate zone",
+)
+async def geocode(
+    q: str = Query(..., description="Free-text US location query, e.g. 'Phoenix'."),
+    settings: Settings = Depends(get_settings),
+) -> list[GeocodeResult]:
+    """Suggest US locations for the search box, resolving each one's climate zone."""
+    try:
+        return await geocode_search(q, settings)
+    except GeocodeError as exc:
+        # A new endpoint, so it gets its own `ApiError` rather than routing through the
+        # FortyGuard-flavored `as_api_error`. Same response shape, own code — the search
+        # box degrades to "couldn't search" without touching the evaluate error contract.
+        raise ApiError(
+            status.HTTP_502_BAD_GATEWAY,
+            code="geocode_failed",
+            message="Couldn't search for locations right now. Please try again in a moment.",
+            hint="Nominatim was unreachable or returned an error; see the backend log.",
+            retryable=True,
+            cause=str(exc),
+        ) from exc

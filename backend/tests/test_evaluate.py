@@ -54,6 +54,9 @@ REQUEST = {"polygon_aoi": AOI, "date_time": "2026-08-25T14:00:00"}
 HOT = {"cells": [{"temperature": 41.2}, {"temperature": 38.4}]}   # peak 41.2 -> HIGH
 MILD = {"cells": [{"temperature": 22.0}, {"temperature": 24.0}]}  # peak 24.0 -> LOW
 NO_READINGS: dict[str, Any] = {"cells": []}                       # peak None -> MEDIUM floor
+# Peak 35: HIGH under the default Mixed-Humid zone (>=33), but LOW in Hot-Dry (AZ, <36). The
+# one heatmap whose verdict flips on the site's state — the whole point of the feature.
+WARM_35 = {"cells": [{"temperature": 35.0}, {"temperature": 35.0}]}
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -148,14 +151,20 @@ def fortyguard_raises(exc: Exception) -> Any:
 
 
 def agent_returns(result: AgentDecision) -> Any:
-    async def fake(self: Any, heatmap: Any, *, date_time: datetime) -> AgentDecision:
+    # `zone` is accepted (the router now passes it) but ignored: these fakes stand in for
+    # the whole agent, so threshold enforcement isn't what's under test here.
+    async def fake(
+        self: Any, heatmap: Any, *, date_time: datetime, zone: Any = None
+    ) -> AgentDecision:
         return result
 
     return patch.object(HeatRiskAgent, "assess", fake)
 
 
 def agent_raises(exc: Exception) -> Any:
-    async def fake(self: Any, heatmap: Any, *, date_time: datetime) -> AgentDecision:
+    async def fake(
+        self: Any, heatmap: Any, *, date_time: datetime, zone: Any = None
+    ) -> AgentDecision:
         raise exc
 
     return patch.object(HeatRiskAgent, "assess", fake)
@@ -179,9 +188,13 @@ class EndToEndTests(RouteTestCase):
     """The real route, real clients, scripted transports. No patching of our own code."""
 
     def run_full_stack(
-        self, heatmap: Any, *, slack_webhook_url: str | None = None
+        self, heatmap: Any, *, slack_webhook_url: str | None = None, **request_overrides: Any
     ) -> tuple[httpx.Response, list[httpx.Request]]:
-        """Drive the route with both upstreams scripted at the transport layer."""
+        """Drive the route with both upstreams scripted at the transport layer.
+
+        `request_overrides` are merged into the POST body, so a caller can vary the request
+        (e.g. `state="AZ"`) while keeping the same scripted heatmap.
+        """
         seen: list[httpx.Request] = []
         # The model echoes the measured numbers back, as the prompt instructs.
         summary = {"cells": heatmap["cells"]}
@@ -258,7 +271,7 @@ class EndToEndTests(RouteTestCase):
             patch.object(slack, "send_alert", patched_send_alert),
         ):
             client = self.client(slack_webhook_url=slack_webhook_url)
-            return self.post(client), seen
+            return self.post(client, **request_overrides), seen
 
     def test_a_hot_site_reschedules_and_alerts_through_the_whole_stack(self):
         response, seen = self.run_full_stack(HOT, slack_webhook_url=SLACK_WEBHOOK_URL)
@@ -309,6 +322,48 @@ class EndToEndTests(RouteTestCase):
         self.assertEqual(body["decision"], "MODIFY")
         self.assertIsNone(body["peak_temperature"])
         self.assertEqual(body["reason"], UNKNOWN_REASON)
+
+    def test_the_same_peak_flips_verdict_on_the_sites_climate_zone(self):
+        """35 C reschedules in the Northeast default but proceeds in Phoenix.
+
+        Same heatmap, same measured peak, through the whole real stack — only the request's
+        `state` changes. This is the feature's headline claim, proven end to end.
+        """
+        default_zone, seen_default = self.run_full_stack(WARM_35)
+        self.assertEqual(default_zone.status_code, 200, default_zone.text)
+        default_body = default_zone.json()
+        self.assertEqual(default_body["peak_temperature"], 35.0)
+        self.assertEqual(default_body["risk_level"], "HIGH")
+        self.assertEqual(default_body["decision"], "RESCHEDULE")
+        self.assertEqual(default_body["climate_zone"]["name"], "Mixed-Humid")
+        self.assertEqual(default_body["climate_zone"]["medium_threshold_c"], 30.0)
+        self.assertEqual(default_body["climate_zone"]["high_threshold_c"], 33.0)
+
+        phoenix, _ = self.run_full_stack(WARM_35, state="AZ")
+        self.assertEqual(phoenix.status_code, 200, phoenix.text)
+        hot_dry_body = phoenix.json()
+        # Same measured peak...
+        self.assertEqual(hot_dry_body["peak_temperature"], 35.0)
+        # ...different verdict, because Phoenix's crews are acclimatized to a higher cutoff.
+        self.assertEqual(hot_dry_body["risk_level"], "LOW")
+        self.assertEqual(hot_dry_body["decision"], "PROCEED")
+        self.assertEqual(hot_dry_body["climate_zone"]["name"], "Hot-Dry")
+        self.assertEqual(hot_dry_body["climate_zone"]["high_threshold_c"], 39.0)
+
+    def test_the_resolved_zone_and_its_thresholds_come_back_in_the_response(self):
+        """CLAUDE.md dashboards track: the card shows which zone's rules applied."""
+        response, _ = self.run_full_stack(HOT, state="FL")
+
+        zone = response.json()["climate_zone"]
+        self.assertEqual(zone["name"], "Hot-Humid")
+        self.assertEqual(zone["medium_threshold_c"], 34.0)
+        self.assertEqual(zone["high_threshold_c"], 37.0)
+
+    def test_an_unknown_state_falls_back_to_the_default_zone(self):
+        """A state with no explicit entry (here NY) uses Mixed-Humid, unchanged behavior."""
+        response, _ = self.run_full_stack(HOT, state="NY")
+
+        self.assertEqual(response.json()["climate_zone"]["name"], "Mixed-Humid")
 
 
 class OrchestrationTests(RouteTestCase):
@@ -393,7 +448,8 @@ class OrchestrationTests(RouteTestCase):
             set(body),
             {
                 "risk_level", "peak_temperature", "average_temperature", "decision",
-                "recommendation", "reason", "activity_id", "evaluated_at", "alert_sent",
+                "recommendation", "reason", "climate_zone", "activity_id",
+                "evaluated_at", "alert_sent",
             },
         )
 
