@@ -103,8 +103,8 @@ def as_api_error(exc: Exception) -> ApiError:
             status.HTTP_504_GATEWAY_TIMEOUT,
             code="fortyguard_timeout",
             message=(
-                "The temperature service is still working on this area and did not finish "
-                "in time. Nothing is wrong with the request — try again in a moment."
+                "The temperature service did not finish in time. Nothing is wrong with "
+                "the request — try again."
             ),
             hint=(
                 "FortyGuard heatmap jobs are asynchronous. Raise POLL_MAX_ATTEMPTS in "
@@ -137,7 +137,7 @@ def as_api_error(exc: Exception) -> ApiError:
             status.HTTP_504_GATEWAY_TIMEOUT,
             code="fortyguard_timeout",
             message=(
-                "The temperature service did not respond in time. Try again in a moment."
+                "The temperature service did not respond in time. Try again."
             ),
             hint=(
                 "This was a network timeout rather than a slow job. Raise "
@@ -182,11 +182,11 @@ def as_api_error(exc: Exception) -> ApiError:
             status.HTTP_503_SERVICE_UNAVAILABLE,
             code="agent_rate_limited",
             message=(
-                "The reasoning service is rate-limited right now. Try again "
+                "The reasoning service is rate-limited. Try again "
                 f"{_seconds(exc.retry_after_seconds)}."
             ),
             hint=(
-                "Groq's free tier limits requests per minute. openai/gpt-oss-20b has more "
+                "Groq's free tier limits requests per minute. openai/gpt-oss-120b has more "
                 "headroom if this happens during a demo."
             ),
             retryable=True,

@@ -1,11 +1,12 @@
 "use client";
 
 import { DECISION_HEADLINE, RISK_STYLES, formatTemperature, formatTimestamp } from "@/lib/risk";
-import type { EvaluateResponse } from "@/lib/types";
+import type { EvaluateResponse, SelectedLocation } from "@/lib/types";
 
 interface HistoryEntry {
   id: number;
   result: EvaluateResponse;
+  location: SelectedLocation;
 }
 
 /**
@@ -44,7 +45,7 @@ export function HistoryList({
         <p className="mt-3 text-sm text-slate-500">No evaluations yet this session.</p>
       ) : (
         <ol className="mt-2 divide-y divide-white/5">
-          {items.map(({ id, result }) => {
+          {items.map(({ id, result, location }) => {
             const style = RISK_STYLES[result.risk_level];
             const isSelected = id === selectedId;
             return (
@@ -63,7 +64,7 @@ export function HistoryList({
                       {result.decision}
                     </span>
                     <span className="truncate text-xs text-slate-500">
-                      {formatTimestamp(result.evaluated_at)}
+                      {formatTimestamp(result.evaluated_at)} · {location.label}
                     </span>
                     {/* Only shown when an alert was actually delivered — the decision card
                         carries the full story, including the failed-to-deliver case. */}

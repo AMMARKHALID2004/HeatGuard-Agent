@@ -1,7 +1,8 @@
 "use client";
 
 import { DECISION_HEADLINE, RISK_STYLES, formatTemperature, formatTimestamp } from "@/lib/risk";
-import type { EvaluateResponse } from "@/lib/types";
+import { resolveZone, zoneKeyFromInfo } from "@/lib/climate";
+import type { EvaluateResponse, ClimateZoneInfo } from "@/lib/types";
 
 /**
  * The current decision, its numbers, and the agent's plain-language output.
@@ -27,6 +28,8 @@ export function DecisionCard({
   onShowLatest?: () => void;
 }) {
   const style = RISK_STYLES[result.risk_level];
+  const zoneKey = zoneKeyFromInfo(result.climate_zone);
+  const zone = resolveZone(zoneKey);
 
   return (
     <section
@@ -63,6 +66,19 @@ export function DecisionCard({
               </span>
             </div>
 
+            {/* Climate zone badge — the rules that produced this decision. */}
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="text-slate-500">Climate zone:</span>
+              <span className={`font-medium ${style.text}`}>{zone.name}</span>
+              <span className="text-slate-500">(thresholds:</span>
+              <span className="font-mono tabular-nums text-slate-300">
+                {"LOW < "}{zone.mediumThresholdC}°C,{" "}
+                MEDIUM {zone.mediumThresholdC}–{zone.highThresholdC}°C,{" "}
+                HIGH ≥ {zone.highThresholdC}°C
+              </span>
+              <span className="text-slate-500">)</span>
+            </div>
+
             {/* Field 2 of 6: the decision itself, the one thing readable across a room. */}
             <h2 className={`mt-2 text-3xl font-semibold tracking-tight ${style.text}`}>
               {result.decision}
@@ -90,8 +106,8 @@ export function DecisionCard({
 
         {result.peak_temperature === null && (
           <p className="mt-4 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
-            No temperature readings were available for this area, so the risk level is a
-            fail-safe floor rather than a measurement.
+            No temperature readings could be retrieved for this area. The risk level defaults
+            to MEDIUM as a safety floor — this is not a measurement.
           </p>
         )}
 

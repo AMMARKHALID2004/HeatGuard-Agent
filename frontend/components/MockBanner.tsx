@@ -1,6 +1,6 @@
 "use client";
 
-import { MOCK_SCENARIOS, type MockScenarioId } from "@/lib/mock";
+import { isMockMode, MOCK_SCENARIOS, type MockScenarioId } from "@/lib/mock";
 
 /**
  * The mock-mode header: an unmissable notice, plus a picker for which sample to play next.
@@ -23,6 +23,11 @@ export function MockBanner({
   onSelect: (id: MockScenarioId) => void;
   disabled: boolean;
 }) {
+  // If USE_MOCK_DATA is not explicitly set, don't render anything at all.
+  // This ensures production builds never show the mock banner, even if the component
+  // is accidentally imported and rendered.
+  if (!isMockMode()) return null;
+
   const decisions = MOCK_SCENARIOS.filter((scenario) => scenario.kind === "decision");
   const failures = MOCK_SCENARIOS.filter((scenario) => scenario.kind === "failure");
 
@@ -33,7 +38,7 @@ export function MockBanner({
           Mock data
         </span>
         <p className="text-sm text-amber-100/90">
-          Sample responses only — nothing is measured and no API is called.
+          Sample responses for layout work. No API is called and no readings are real.
         </p>
         <code className="text-xs text-amber-200/60">USE_MOCK_DATA</code>
       </div>
@@ -47,7 +52,7 @@ export function MockBanner({
           disabled={disabled}
         />
         <ScenarioGroup
-          legend="Failures"
+          legend="Errors"
           scenarios={failures}
           selected={selected}
           onSelect={onSelect}

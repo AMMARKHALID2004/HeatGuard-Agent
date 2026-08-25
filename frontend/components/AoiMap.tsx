@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 
 import { RISK_STYLES } from "@/lib/risk";
-import type { Coordinate, RiskLevel } from "@/lib/types";
+import { resolveZone, zoneKeyFromInfo } from "@/lib/climate";
+import type { Coordinate, RiskLevel, ClimateZoneInfo } from "@/lib/types";
 
 /**
  * Leaflet must not run on the server (it reaches for `window` when the map is built), so the
@@ -27,13 +28,19 @@ export function AoiMap({
   riskLevel,
   label,
   isPending = false,
+  climateZone,
 }: {
   ring: Coordinate[];
   riskLevel: RiskLevel | null;
   label: string;
   /** Dims the map while an evaluation runs, so the tint is not read as current. */
   isPending?: boolean;
+  /** The climate zone resolved for this evaluation, for the threshold legend. */
+  climateZone?: ClimateZoneInfo | null;
 }) {
+  const zoneKey = zoneKeyFromInfo(climateZone ?? null);
+  const zone = resolveZone(zoneKey);
+
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
       <h2 className="text-xs font-medium uppercase tracking-widest text-slate-500">
@@ -59,9 +66,9 @@ export function AoiMap({
       <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {(
           [
-            ["LOW", "< 30°C"],
-            ["MEDIUM", "30–33°C"],
-            ["HIGH", "≥ 33°C"],
+            ["LOW", `< ${zone.mediumThresholdC}°C`],
+            ["MEDIUM", `${zone.mediumThresholdC}–${zone.highThresholdC}°C`],
+            ["HIGH", `≥ ${zone.highThresholdC}°C`],
           ] as const
         ).map(([level, band]) => (
           <li key={level} className="flex items-center gap-1.5">
@@ -77,6 +84,10 @@ export function AoiMap({
           </li>
         ))}
       </ul>
+
+      <p className="mt-2 text-xs text-slate-500">
+        Climate zone: <span className="font-medium text-slate-300">{zone.name}</span>
+      </p>
 
       <ul className="mt-4 space-y-1 font-mono text-xs text-slate-500">
         {ring.slice(0, -1).map(([lon, lat], index) => (

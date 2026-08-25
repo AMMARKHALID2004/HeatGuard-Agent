@@ -63,11 +63,8 @@ export function ErrorAlert({
           {isRetrying ? "Retrying…" : "Try again"}
         </button>
       ) : (
-        // No button at all rather than a disabled one: this failure needs someone to change
-        // a config value and restart the backend, and a greyed-out "Try again" would suggest
-        // waiting is the answer.
         <p className="mt-3.5 text-xs text-slate-500">
-          Retrying will not help until this is fixed on the server.
+          This requires a server-side fix — retrying will not help.
         </p>
       )}
     </div>

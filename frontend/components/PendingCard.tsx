@@ -27,23 +27,23 @@ interface Phase {
 const PHASES: Phase[] = [
   {
     at: 0,
-    label: "Requesting the heatmap",
-    detail: "Submitting the area and work window to FortyGuard.",
+    label: "Requesting heatmap",
+    detail: "Sending the site area and shift time to FortyGuard.",
   },
   {
     at: 3,
-    label: "Waiting on the heatmap job",
-    detail: "FortyGuard processes these asynchronously; the backend polls with backoff.",
+    label: "Waiting for heatmap",
+    detail: "FortyGuard processes asynchronously; the backend polls until ready.",
   },
   {
     at: 12,
-    label: "Still polling",
-    detail: "Large areas take longer. The backend gives up at POLL_MAX_ATTEMPTS and returns a 504.",
+    label: "Still waiting",
+    detail: "Large areas take longer. The backend times out at POLL_MAX_ATTEMPTS.",
   },
   {
     at: 22,
-    label: "Assessing the readings",
-    detail: "Peak and average are computed here, then the model writes the recommendation.",
+    label: "Assessing risk",
+    detail: "Computing peak/average temperatures and generating the recommendation.",
   },
 ];
 

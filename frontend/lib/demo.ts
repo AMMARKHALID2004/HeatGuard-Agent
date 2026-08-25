@@ -19,6 +19,21 @@ export const DEMO_AOI: Coordinate[] = [
 export const DEMO_AOI_LABEL = "Construction site — Lower Manhattan, NYC";
 
 /**
+ * Generate a ~500m square AOI ring around a point (closed ring, [lon, lat]).
+ * ~0.005° ≈ 500m at mid-latitudes; good enough for a demo AOI.
+ */
+export function buildAoiRing(lat: number, lon: number): Coordinate[] {
+  const delta = 0.005;
+  return [
+    [lon - delta, lat - delta],
+    [lon + delta, lat - delta],
+    [lon + delta, lat + delta],
+    [lon - delta, lat + delta],
+    [lon - delta, lat - delta],
+  ];
+}
+
+/**
  * The default work window: the current local hour, formatted for
  * `<input type="datetime-local">` (`YYYY-MM-DDTHH:mm`, local time, no zone).
  *

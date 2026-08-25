@@ -8,10 +8,11 @@ import { ErrorAlert } from "@/components/ErrorAlert";
 import { HistoryList } from "@/components/HistoryList";
 import { MockBanner } from "@/components/MockBanner";
 import { PendingCard } from "@/components/PendingCard";
+import { SearchLocation } from "@/components/SearchLocation";
 import { ApiError, evaluate } from "@/lib/api";
-import { DEMO_AOI, DEMO_AOI_LABEL, currentWorkWindow } from "@/lib/demo";
+import { buildAoiRing, currentWorkWindow } from "@/lib/demo";
 import { DEFAULT_MOCK_SCENARIO, type MockScenarioId, isMockMode } from "@/lib/mock";
-import type { EvaluateResponse } from "@/lib/types";
+import type { EvaluateResponse, SelectedLocation } from "@/lib/types";
 
 /**
  * One past evaluation. The backend response carries no id of its own, and `evaluated_at`
@@ -20,6 +21,8 @@ import type { EvaluateResponse } from "@/lib/types";
 interface HistoryEntry {
   id: number;
   result: EvaluateResponse;
+  /** The location that was evaluated, for display in history. */
+  location: SelectedLocation;
 }
 
 /** What the alert box needs. The backend owns the wording; this only decides layout. */
@@ -33,6 +36,21 @@ const UNEXPECTED: DisplayError = {
   status: 0,
 };
 
+/** Default demo location (Lower Manhattan) as a SelectedLocation. */
+const DEMO_LOCATION: SelectedLocation = {
+  label: "Construction site — Lower Manhattan, NYC",
+  lat: 40.7115,
+  lon: -74.01,
+  state: "NY",
+  aoi: [
+    [-74.017, 40.705],
+    [-74.003, 40.705],
+    [-74.003, 40.718],
+    [-74.017, 40.718],
+    [-74.017, 40.705],
+  ],
+};
+
 export default function DashboardPage() {
   // Empty until the client fills it, so server and client first render identically. `now`
   // is only knowable in the browser; see `currentWorkWindow`.
@@ -42,6 +60,11 @@ export default function DashboardPage() {
   const [error, setError] = useState<DisplayError | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [mockScenario, setMockScenario] = useState<MockScenarioId>(DEFAULT_MOCK_SCENARIO);
+
+  // Currently selected location (defaults to demo location)
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation>(DEMO_LOCATION);
+  // Search input text (separate from selectedLocation.label so typing doesn't overwrite the pick)
+  const [searchText, setSearchText] = useState(DEMO_LOCATION.label);
 
   // Read once into state rather than calling `isMockMode()` during render. The value is
   // inlined at build time so it is identical on both sides, but keeping the read in an
@@ -74,11 +97,16 @@ export default function DashboardPage() {
     try {
       // `datetime-local` yields a naive local timestamp, which is what a site
       // supervisor means by "the shift starts at 13:00".
+      // Include the state code so the backend resolves the same zone the picker previewed.
       const result = await evaluate(
-        { polygon_aoi: DEMO_AOI, date_time: dateTime },
+        {
+          polygon_aoi: selectedLocation.aoi,
+          date_time: dateTime,
+          state: selectedLocation.state,
+        },
         { signal: controller.signal, mockScenario },
       );
-      const entry = { id: nextId.current++, result };
+      const entry = { id: nextId.current++, result, location: selectedLocation };
       setHistory((previous) => [entry, ...previous]);
       setSelectedId(entry.id);
     } catch (caught) {
@@ -94,7 +122,16 @@ export default function DashboardPage() {
         setIsEvaluating(false);
       }
     }
-  }, [dateTime, mockScenario]);
+  }, [dateTime, mockScenario, selectedLocation]);
+
+  const handleLocationSelect = useCallback((location: SelectedLocation) => {
+    setSelectedLocation(location);
+    setSearchText(location.label);
+  }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchText(value);
+  }, []);
 
   const selected = history.find((entry) => entry.id === selectedId) ?? null;
   const isViewingPast = selected !== null && history[0]?.id !== selected.id;
@@ -110,28 +147,44 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-end gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-widest text-slate-500">
-              Work window
-            </span>
-            <input
-              type="datetime-local"
-              value={dateTime}
-              onChange={(event) => setDateTime(event.target.value)}
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3 w-full lg:w-auto">
+          <div className="w-full lg:w-80">
+            <SearchLocation
+              value={searchText}
+              onChange={handleSearchChange}
+              onSelect={handleLocationSelect}
               disabled={isEvaluating}
-              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:border-white/30 disabled:opacity-50"
+              placeholder="Search US location…"
             />
-          </label>
+          </div>
 
-          <button
-            type="button"
-            onClick={runEvaluation}
-            disabled={isEvaluating || !dateTime}
-            className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isEvaluating ? "Running…" : "Run Evaluation"}
-          </button>
+          <div className="flex flex-col lg:flex-row lg:items-end gap-3 w-full lg:w-auto">
+            <label className="flex flex-col gap-1.5 lg:w-48">
+              <span className="text-xs font-medium uppercase tracking-widest text-slate-500">
+                Shift start
+              </span>
+              <input
+                type="datetime-local"
+                value={dateTime}
+                onChange={(event) => setDateTime(event.target.value)}
+                disabled={isEvaluating}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:border-white/30 disabled:opacity-50"
+                aria-describedby="shift-start-hint"
+              />
+              <span id="shift-start-hint" className="text-[11px] text-slate-500">
+                Local time. The agent reads live temperature for this hour.
+              </span>
+            </label>
+
+            <button
+              type="button"
+              onClick={runEvaluation}
+              disabled={isEvaluating || !dateTime}
+              className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 w-full lg:w-auto"
+            >
+              {isEvaluating ? "Evaluating…" : "Evaluate heat risk"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -165,25 +218,26 @@ export default function DashboardPage() {
             !error && (
               <section className="rounded-xl border border-dashed border-white/15 p-10 text-center">
                 <p className="text-sm text-slate-400">
-                  No decision yet. Run an evaluation for{" "}
-                  <span className="text-slate-200">{DEMO_AOI_LABEL}</span>.
+                  No decision yet. Pick a site and a shift start, then press{" "}
+                  <span className="font-medium text-slate-200">Evaluate heat risk</span>.
                 </p>
               </section>
             )
           )}
 
           <HistoryList
-            items={history}
+            items={history.map((e) => ({ id: e.id, result: e.result, location: e.location }))}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
         </div>
 
         <AoiMap
-          ring={DEMO_AOI}
+          ring={selected?.location.aoi ?? selectedLocation.aoi}
           riskLevel={selected?.result.risk_level ?? null}
-          label={DEMO_AOI_LABEL}
+          label={selected?.location.label ?? selectedLocation.label}
           isPending={isEvaluating}
+          climateZone={selected?.result.climate_zone ?? null}
         />
       </div>
     </main>

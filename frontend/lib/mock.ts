@@ -168,7 +168,7 @@ export const MOCK_SCENARIOS: MockScenario[] = [
   },
   {
     id: "fortyguard-timeout",
-    label: "504 timeout",
+    label: "Timeout (504)",
     kind: "failure",
     // Longer on purpose: this is the failure that arrives after a wait, and the pending state
     // has to hold up for the whole of it.
@@ -176,30 +176,27 @@ export const MOCK_SCENARIOS: MockScenario[] = [
     failure: failure(
       504,
       "fortyguard_timeout",
-      "The temperature service is still working on this area and did not finish in time. " +
-        "Nothing is wrong with the request — try again in a moment.",
-      "FortyGuard heatmap jobs are asynchronous. Raise POLL_MAX_ATTEMPTS in backend/.env if " +
-        "large areas routinely need longer.",
+      "The temperature service did not finish in time. Nothing is wrong with the request — try again.",
+      "FortyGuard heatmap jobs are asynchronous. Raise POLL_MAX_ATTEMPTS in backend/.env if large areas routinely need longer.",
       true,
     ),
   },
   {
     id: "agent-rate-limited",
-    label: "503 rate-limited",
+    label: "Rate limited (503)",
     kind: "failure",
     latencyMs: 900,
     failure: failure(
       503,
       "agent_rate_limited",
-      "The reasoning service is rate-limited right now. Try again in about 20 seconds.",
-      "Groq's free tier limits requests per minute. openai/gpt-oss-20b has more headroom if " +
-        "this happens during a demo.",
+      "The reasoning service is rate-limited. Try again in about 20 seconds.",
+      "Groq's free tier limits requests per minute. openai/gpt-oss-120b has more headroom if this happens during a demo.",
       true,
     ),
   },
   {
     id: "not-configured",
-    label: "500 no API key",
+    label: "Not configured (500)",
     kind: "failure",
     latencyMs: 500,
     failure: failure(

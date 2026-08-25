@@ -1,5 +1,11 @@
 import { type MockScenarioId, isMockMode, playScenario } from "./mock";
-import type { ApiErrorBody, ApiErrorCode, EvaluateRequest, EvaluateResponse } from "./types";
+import type {
+  ApiErrorBody,
+  ApiErrorCode,
+  EvaluateRequest,
+  EvaluateResponse,
+  GeocodeResult,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -138,4 +144,92 @@ export async function evaluate(
   }
 
   return (await response.json()) as EvaluateResponse;
+}
+
+/**
+ * Search US locations via the backend's geocode proxy. Each suggestion includes its
+ * resolved climate zone so the picker can preview which thresholds will apply.
+ *
+ * Throws `ApiError` on failure (network down, Nominatim unreachable, etc.) — same
+ * error type as `evaluate`, so callers have one `catch` block to handle.
+ */
+export async function geocode(
+  query: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<GeocodeResult[]> {
+  if (isMockMode()) {
+    // Mock mode: return a few hardcoded suggestions across different zones so the
+    // search UI can be laid out offline. Never hits the network.
+    return [
+      {
+        label: "Phoenix, Arizona",
+        lat: 33.4484,
+        lon: -112.074,
+        state: "AZ",
+        climate_zone: {
+          name: "Hot-Dry",
+          medium_threshold_c: 36,
+          high_threshold_c: 39,
+        },
+      },
+      {
+        label: "Miami, Florida",
+        lat: 25.7617,
+        lon: -80.1918,
+        state: "FL",
+        climate_zone: {
+          name: "Hot-Humid",
+          medium_threshold_c: 34,
+          high_threshold_c: 37,
+        },
+      },
+      {
+        label: "Minneapolis, Minnesota",
+        lat: 44.9778,
+        lon: -93.265,
+        state: "MN",
+        climate_zone: {
+          name: "Cold / Northern",
+          medium_threshold_c: 27,
+          high_threshold_c: 30,
+        },
+      },
+      {
+        label: "Lower Manhattan, New York",
+        lat: 40.7128,
+        lon: -74.006,
+        state: "NY",
+        climate_zone: {
+          name: "Mixed-Humid",
+          medium_threshold_c: 30,
+          high_threshold_c: 33,
+        },
+      },
+    ];
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/api/geocode?q=${encodeURIComponent(query)}`, {
+      method: "GET",
+      cache: "no-store",
+      signal: options.signal,
+    });
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    throw new ApiError(
+      `Could not reach the backend at ${API_URL}.`,
+      0,
+      "unreachable",
+      `Start it with \`uvicorn app.main:app --reload --port ${apiPort()}\` from backend/, or set ` +
+        "USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
+      true,
+    );
+  }
+
+  if (!response.ok) {
+    throw await readError(response);
+  }
+
+  return (await response.json()) as GeocodeResult[];
 }
