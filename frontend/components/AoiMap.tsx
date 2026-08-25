@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 
-import { RISK_STYLES } from "@/lib/risk";
 import { resolveZone, zoneKeyFromInfo } from "@/lib/climate";
 import type { Coordinate, RiskLevel, ClimateZoneInfo } from "@/lib/types";
 
@@ -17,7 +16,7 @@ import type { Coordinate, RiskLevel, ClimateZoneInfo } from "@/lib/types";
 const MapCanvas = dynamic(() => import("./MapCanvas").then((m) => m.MapCanvas), {
   ssr: false,
   loading: () => (
-    <div className="mt-4 flex h-[420px] w-full items-center justify-center rounded-lg bg-slate-900/70 text-xs text-slate-500">
+    <div className="h-full w-full flex items-center justify-center rounded-lg bg-surface/70 caption-text text-text-muted">
       Loading map…
     </div>
   ),
@@ -42,60 +41,74 @@ export function AoiMap({
   const zone = resolveZone(zoneKey);
 
   return (
-    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
-      <h2 className="text-xs font-medium uppercase tracking-widest text-slate-500">
-        Area of interest
-      </h2>
-      <p className="mt-1.5 text-sm text-slate-300">{label}</p>
-
-      {/* Leaflet controls are interactive, so this is not an `img`; a screen reader gets the
-          state from here instead of from the tiles. */}
-      <p className="sr-only">
-        {riskLevel
-          ? `Map of ${label}, ${riskLevel} risk`
-          : `Map of ${label}, not yet evaluated`}
-      </p>
-
-      <div className={`transition-opacity ${isPending ? "opacity-40" : "opacity-100"}`}>
+    <div className="h-full w-full relative">
+      {/* Map canvas — full screen */}
+      <div className="h-full w-full">
         <MapCanvas ring={ring} riskLevel={riskLevel} />
       </div>
 
-      {/* The thresholds are stated on screen because the colour is otherwise unexplained,
-          and because they are fixed in `backend/app/risk.py` rather than being the model's
-          call — worth showing a judge. The active band is highlighted. */}
-      <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-        {(
-          [
-            ["LOW", `< ${zone.mediumThresholdC}°C`],
-            ["MEDIUM", `${zone.mediumThresholdC}–${zone.highThresholdC}°C`],
-            ["HIGH", `≥ ${zone.highThresholdC}°C`],
-          ] as const
-        ).map(([level, band]) => (
-          <li key={level} className="flex items-center gap-1.5">
-            <span
-              className={`size-2 rounded-full ${RISK_STYLES[level].dot} ${
-                riskLevel && riskLevel !== level ? "opacity-30" : ""
-              }`}
-              aria-hidden
-            />
-            <span className={riskLevel === level ? RISK_STYLES[level].text : "text-slate-500"}>
-              {band}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {/* Threshold legend — bottom-left overlay on map */}
+      <div className="absolute bottom-5 left-5 right-5 sm:left-5 sm:right-auto sm:max-w-xs pointer-events-none z-10">
+        <div className="card-elevated p-3 pointer-events-auto animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+          <p className="section-label mb-2">Temperature thresholds</p>
+          <ul className="flex flex-col gap-2">
+            {(
+              [
+                ["LOW", `< ${zone.mediumThresholdC}°C`, "proceed"],
+                ["MEDIUM", `${zone.mediumThresholdC}–${zone.highThresholdC}°C`, "modify"],
+                ["HIGH", `≥ ${zone.highThresholdC}°C`, "reschedule"],
+              ] as const
+            ).map(([level, band, colorKey]) => (
+              <li key={level} className="flex items-center gap-2">
+                <span
+                  className={`size-2 rounded-full transition-all ${
+                    riskLevel && riskLevel !== level ? "opacity-30" : "opacity-100"
+                  } bg-${colorKey}`}
+                  aria-hidden
+                />
+                <span className={`caption-text ${
+                  riskLevel === level ? `text-${colorKey} font-medium` : "text-text-muted"
+                }`}>
+                  {band}
+                </span>
+                {riskLevel === level && (
+                  <span className="ml-auto size-1.5 rounded-full bg-${colorKey} animate-pulse" aria-hidden />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
 
-      <p className="mt-2 text-xs text-slate-500">
-        Climate zone: <span className="font-medium text-slate-300">{zone.name}</span>
-      </p>
+      {/* Climate zone — top-right */}
+      <div className="absolute top-20 right-5 z-10 pointer-events-none sm:top-[100px]">
+        <div className="card-elevated px-3 py-2 pointer-events-auto animate-fade-in-up" style={{ animationDelay: "300ms" }}>
+          <p className="caption-text text-text-muted flex items-center gap-2">
+            <span className="font-medium text-text">Climate zone:</span>
+            <span className="font-medium text-ember-500">{zone.name}</span>
+          </p>
+        </div>
+      </div>
 
-      <ul className="mt-4 space-y-1 font-mono text-xs text-slate-500">
-        {ring.slice(0, -1).map(([lon, lat], index) => (
-          <li key={`${lon},${lat},${index}`}>
-            {lat.toFixed(4)}, {lon.toFixed(4)}
-          </li>
-        ))}
-      </ul>
-    </section>
+      {/* Coordinates — bottom-right, collapsible */}
+      <details className="absolute bottom-5 right-5 z-10 pointer-events-none group">
+        <summary className="card-elevated px-3 py-2 pointer-events-auto cursor-pointer select-none flex items-center gap-2 caption-text text-text-muted">
+          <span>Coordinates</span>
+          <svg className="size-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </summary>
+        <div className="card-elevated mt-2 min-w-[180px] pointer-events-auto animate-fade-in-up">
+          <ul className="p-3 space-y-1 font-mono text-xs text-text-muted border-t border-border">
+            {ring.slice(0, -1).map(([lon, lat], index) => (
+              <li key={`${lon},${lat},${index}`} className="tabular-nums flex items-center gap-2">
+                <span className="text-text-muted/50">{index + 1}.</span>
+                <span>{lat.toFixed(4)}, {lon.toFixed(4)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
+    </div>
   );
 }

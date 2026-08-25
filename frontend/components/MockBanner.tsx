@@ -13,6 +13,8 @@ import { isMockMode, MOCK_SCENARIOS, type MockScenarioId } from "@/lib/mock";
  * The picker is what makes offline work worth doing: the failure states are the ones you most
  * need to look at and the ones you can least easily provoke against a live backend, since
  * you would have to stall FortyGuard or revoke your own API key to see them.
+ *
+ * Direction 5: Tactical alert banner at top of briefing panel.
  */
 export function MockBanner({
   selected,
@@ -32,15 +34,15 @@ export function MockBanner({
   const failures = MOCK_SCENARIOS.filter((scenario) => scenario.kind === "failure");
 
   return (
-    <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3">
+    <section className="card-base border-ember-border bg-ember-surface/30 p-3 animate-fade-in-up">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-amber-200">
-          Mock data
+        <span className="rounded bg-ember-500/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-ember-500">
+          Mock Data
         </span>
-        <p className="text-sm text-amber-100/90">
+        <p className="caption-text text-text-secondary flex-1 min-w-0">
           Sample responses for layout work. No API is called and no readings are real.
         </p>
-        <code className="text-xs text-amber-200/60">USE_MOCK_DATA</code>
+        <code className="caption-text font-mono text-ember-500/70 whitespace-nowrap">USE_MOCK_DATA</code>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -59,7 +61,7 @@ export function MockBanner({
           disabled={disabled}
         />
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -79,7 +81,7 @@ function ScenarioGroup({
   return (
     <fieldset className="flex flex-wrap items-center gap-2" disabled={disabled}>
       <legend className="sr-only">{legend}</legend>
-      <span className="text-[11px] uppercase tracking-widest text-amber-200/50">{legend}</span>
+      <span className="caption-text uppercase tracking-widest text-text-muted">{legend}</span>
       {scenarios.map((scenario) => {
         const isSelected = scenario.id === selected;
         return (
@@ -88,13 +90,11 @@ function ScenarioGroup({
             type="button"
             onClick={() => onSelect(scenario.id)}
             disabled={disabled}
-            // `aria-pressed` rather than a radio group: these are toggle buttons that also
-            // read out their state, and the visual selection is the only affordance.
             aria-pressed={isSelected}
-            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition disabled:opacity-40 ${
+            className={`rounded-md border px-2.5 py-1 caption-text font-medium transition disabled:opacity-40 ${
               isSelected
-                ? "border-amber-300/70 bg-amber-300/20 text-amber-100"
-                : "border-amber-400/25 text-amber-200/70 hover:border-amber-300/50 hover:text-amber-100"
+                ? "border-ember-500/50 bg-ember-surface text-ember-500"
+                : "border-border text-text-secondary hover:border-ember-500/50 hover:text-text"
             }`}
           >
             {scenario.label}

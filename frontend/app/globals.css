@@ -1,24 +1,671 @@
 @import "tailwindcss";
 
+/* Fonts loaded via next/font in layout.tsx — CSS variables reference them */
 @theme {
-  /* Risk accents. Presentation only — thresholds live in backend/app/risk.py. */
-  --color-risk-low: oklch(0.74 0.15 155);
-  --color-risk-medium: oklch(0.8 0.15 78);
-  --color-risk-high: oklch(0.66 0.19 25);
+  /* ==========================================================================
+     COLOR PALETTE — Dark Theme
+     ========================================================================== */
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-    sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  /* Base surfaces */
+  --color-bg: oklch(0.08 0.02 240);           /* #05080C — deep ink */
+  --color-surface: oklch(0.12 0.02 240);      /* #0B121A — panel */
+  --color-surface-hover: oklch(0.16 0.02 240); /* #111A26 */
+  --color-border: oklch(0.22 0.03 240);        /* #1A2533 */
+  --color-border-strong: oklch(0.28 0.04 240);  /* #243346 */
+
+  /* Text */
+  --color-text: oklch(0.94 0.01 240);          /* #F0F3F7 — near-white */
+  --color-text-secondary: oklch(0.65 0.02 240); /* #8B99A9 */
+  --color-text-muted: oklch(0.48 0.03 240);     /* #5A6A7A */
+
+  /* Accent — Ember (primary action, MODIFY decision) */
+  --color-ember-500: oklch(0.62 0.18 55);       /* #E87A1E */
+  --color-ember-400: oklch(0.72 0.16 55);       /* #F09640 */
+  --color-ember-600: oklch(0.54 0.17 55);       /* #D06618 */
+  --color-ember-glow: rgba(232, 122, 30, 0.35);
+
+  /* Decision colors — semantic, not generic success/warning/danger */
+  --color-proceed: oklch(0.68 0.12 250);        /* #5BA4E0 — cool blue-gray */
+  --color-proceed-surface: rgba(91, 164, 224, 0.12);
+  --color-proceed-border: rgba(91, 164, 224, 0.35);
+  --color-proceed-glow: rgba(91, 164, 224, 0.25);
+
+  --color-modify: var(--color-ember-500);
+  --color-modify-surface: rgba(232, 122, 30, 0.12);
+  --color-modify-border: rgba(232, 122, 30, 0.35);
+  --color-modify-glow: var(--color-ember-glow);
+
+  --color-reschedule: oklch(0.52 0.22 25);      /* #C0392B — deep crimson */
+  --color-reschedule-surface: rgba(192, 57, 43, 0.12);
+  --color-reschedule-border: rgba(192, 57, 43, 0.35);
+  --color-reschedule-glow: rgba(192, 57, 43, 0.3);
+
+  /* Risk accents (legacy compatibility — map to decision colors) */
+  --color-risk-low: var(--color-proceed);
+  --color-risk-medium: var(--color-modify);
+  --color-risk-high: var(--color-reschedule);
+
+  /* Focus ring */
+  --color-focus: var(--color-ember-500);
+  --focus-ring: 0 0 0 3px var(--color-ember-glow);
+
+  /* ==========================================================================
+     TYPOGRAPHY — Font families (loaded via next/font in layout.tsx)
+     ========================================================================== */
+  --font-display: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Font weights available via variable fonts */
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ==========================================================================
+     SPACING SCALE (4px base, generous for field use)
+     ========================================================================== */
+  --space-1: 4px;   /* tight inline */
+  --space-2: 6px;   /* icon-text, badge gaps */
+  --space-3: 8px;   /* small card padding */
+  --space-4: 12px;  /* standard card padding */
+  --space-5: 16px;  /* section gaps, panel gaps */
+  --space-6: 24px;  /* major section separation */
+  --space-7: 36px;  /* page-level vertical rhythm */
+  --space-8: 48px;  /* hero gaps */
+  --space-9: 72px;  /* full-bleed section gaps */
+
+  /* Container */
+  --container-max: 72rem;  /* 1152px */
+
+  /* ==========================================================================
+     BORDER RADIUS
+     ========================================================================== */
+  --radius-sm: 0.375rem;   /* 6px */
+  --radius-md: 0.5rem;     /* 8px */
+  --radius-lg: 0.75rem;    /* 12px — decision badge, cards */
+  --radius-xl: 1rem;       /* 16px */
+
+  /* ==========================================================================
+     SHADOWS / ELEVATION (subtle, dark-mode tuned)
+     ========================================================================== */
+  --shadow-0: none;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--color-border);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--color-border-strong);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--color-border-strong);
+
+  /* Decision badge glows */
+  --glow-proceed: 0 0 24px var(--color-proceed-glow);
+  --glow-modify: 0 0 24px var(--color-modify-glow);
+  --glow-reschedule: 0 0 24px var(--color-reschedule-glow);
+
+  /* ==========================================================================
+     TRANSITIONS
+     ========================================================================== */
+  --transition-fast: 150ms ease-out;
+  --transition-base: 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ==========================================================================
+     Z-INDEX
+     ========================================================================== */
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+  --z-tooltip: 400;
 }
 
+/* ==========================================================================
+   BASE LAYER
+   ========================================================================== */
 @layer base {
   html {
     color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-slate-950 font-sans text-slate-100 antialiased;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+    font-weight: var(--font-weight-regular);
+    min-height: 100vh;
+  }
+
+  /* Selection color */
+  ::selection {
+    background-color: var(--color-ember-500);
+    color: var(--color-bg);
+  }
+
+  /* Focus visible — ember ring for all interactive elements */
+  :focus-visible {
+    outline: none;
+    ring: 3px solid var(--color-focus);
+    ring-offset: 2px;
+    ring-offset-color: var(--color-bg);
+  }
+
+  /* Scrollbar — subtle */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-border-strong);
   }
 }
+
+/* ==========================================================================
+   COMPONENT UTILITIES (Tailwind v4 @utility)
+   ========================================================================== */
+
+/* Card surfaces */
+@utility card-base {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+@utility card-elevated {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+@utility card-hover {
+  @apply transition-colors duration-200;
+  &:hover {
+    background-color: var(--color-surface-hover);
+  }
+}
+
+/* Decision badge base */
+@utility decision-badge {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw, 5.5rem);
+  line-height: 1.05;
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Decision variant utilities */
+@utility decision-proceed {
+  color: var(--color-proceed);
+  background-color: var(--color-proceed-surface);
+  border-color: var(--color-proceed-border);
+  box-shadow: var(--glow-proceed);
+}
+
+@utility decision-modify {
+  color: var(--color-modify);
+  background-color: var(--color-modify-surface);
+  border-color: var(--color-modify-border);
+  box-shadow: var(--glow-modify);
+}
+
+@utility decision-reschedule {
+  color: var(--color-reschedule);
+  background-color: var(--color-reschedule-surface);
+  border-color: var(--color-reschedule-border);
+  box-shadow: var(--glow-reschedule);
+}
+
+/* Temperature display */
+@utility temp-display {
+  font-family: var(--font-mono);
+  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-medium);
+}
+
+/* Section label (uppercase, tracked) */
+@utility section-label {
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--color-text-muted);
+}
+
+/* Body text sizes */
+@utility body-lg {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+@utility body-base {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--color-text-secondary);
+}
+
+@utility label-text {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+@utility caption-text {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* Input base */
+@utility input-base {
+  width: 100%;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+
+  &:focus-visible {
+    border-color: var(--color-ember-500);
+    box-shadow: var(--focus-ring);
+  }
+
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* Button base */
+@utility btn-primary {
+  background-color: var(--color-ember-500);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  padding: 0.625rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-ember-400);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-ember-600);
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-ghost {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    color: var(--color-text);
+    border-color: var(--color-border-strong);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-secondary {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  padding: 0.625rem 1.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-border);
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+/* Segmented control button */
+@utility segment-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+@utility segment-btn-active {
+  @apply segment-btn;
+  /* Will be overridden by decision-specific variants */
+}
+
+/* Dropdown / popover */
+@utility dropdown-panel {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(8px);
+}
+
+/* Animation utilities */
+@utility animate-fade-in-up {
+  animation: fadeInUp 250ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@utility animate-decision-flap {
+  animation: decisionFlap 300ms ease-out forwards;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes decisionFlap {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.5em) scaleY(0.8);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0.05em) scaleY(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Decision badge still changes instantly but without animation */
+  .animate-decision-flap {
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   TACTICAL FIELD DISPLAY — Direction 5 (assigned)
+   Map is the mission. Decision is the briefing. Every element serves the call.
+   ========================================================================== */
+
+/* Full-screen map canvas */
+@utility map-canvas {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile */
+  z-index: 0;
+}
+
+/* Decision briefing overlay — bottom sheet (mobile), right panel (desktop) */
+@utility briefing-panel {
+  @apply card-base;
+  background-color: color-mix(in oklch, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-3);
+}
+
+/* Timeline scrubber — mission time points */
+@utility timeline-track {
+  position: relative;
+  display: flex;
+  gap: var(--space-2);
+}
+
+@utility timeline-marker {
+  flex: 1;
+  position: relative;
+  padding: var(--space-3) var(--space-2);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    color: var(--color-text);
+    border-color: var(--color-border-strong);
+    background-color: var(--color-surface-hover);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &[data-active="true"] {
+    color: var(--color-text);
+    border-color: var(--color-ember-500);
+    background-color: var(--color-ember-surface);
+  }
+}
+
+/* Ghost threshold bars — all three bands always visible, active glows */
+@utility threshold-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  transition: all var(--transition-base);
+}
+
+@utility threshold-bar-active {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-surface-hover);
+}
+
+/* Radar sweep — honest polling state */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@utility radar-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0.6;
+}
+
+.radar-sweep::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 300deg,
+    var(--color-ember-glow) 340deg,
+    var(--color-ember-500) 360deg
+  );
+  transform-origin: 0 0;
+  animation: radar-sweep 2s linear infinite;
+}
+
+/* Guarded execute button — the only ember element on idle screen */
+@utility execute-btn {
+  @apply btn-primary;
+  position: relative;
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 0 var(--color-ember-600), var(--shadow-2);
+  transition: all var(--transition-fast);
+
+  &:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--color-ember-600), var(--shadow-1);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+}
+
+/* Decision badge hero in overlay — variable weight by confidence */
+@utility decision-hero {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  line-height: 1.05;
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Mission log entry */
+@utility log-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+  }
+
+  &[data-selected="true"] {
+    border-left: 2px solid var(--color-ember-500);
+    background-color: var(--color-surface-hover);
+  }
+}
+
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--color-ember-500);
+  color: var(--color-bg);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  z-index: var(--z-tooltip);
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+}
+
+/* Decision badge weight mapping via data attribute */
+.decision-badge[data-weight="400"] { font-weight: 400; }
+.decision-badge[data-weight="500"] { font-weight: 500; }
+.decision-badge[data-weight="600"] { font-weight: 600; }
+.decision-badge[data-weight="700"] { font-weight: 700; }

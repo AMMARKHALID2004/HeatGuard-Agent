@@ -1,6 +1,8 @@
 "use client";
 
-import { DECISION_HEADLINE, RISK_STYLES, formatTemperature, formatTimestamp } from "@/lib/risk";
+import { useEffect, useRef, useState } from "react";
+
+import { DECISION_HEADLINE, formatTemperature, formatTimestamp } from "@/lib/risk";
 import { resolveZone, zoneKeyFromInfo } from "@/lib/climate";
 import type { EvaluateResponse, ClimateZoneInfo } from "@/lib/types";
 
@@ -16,6 +18,8 @@ import type { EvaluateResponse, ClimateZoneInfo } from "@/lib/types";
  * Colour comes from `risk_level`, never from `decision`. They are locked together by
  * `backend/app/risk.py`, but keying on the risk band keeps this honest about which value is
  * doing the work.
+ *
+ * Direction 5: Decision hero at full overlay width, variable weight = confidence.
  */
 export function DecisionCard({
   result,
@@ -31,23 +35,37 @@ export function DecisionCard({
   const zoneKey = zoneKeyFromInfo(result.climate_zone);
   const zone = resolveZone(zoneKey);
 
+  // Decision badge weight mapping: LOW=400, MEDIUM=600, HIGH=700 (confidence)
+  const weightMap: Record<string, number> = { LOW: 400, MEDIUM: 600, HIGH: 700 };
+  const badgeWeight = weightMap[result.risk_level] ?? 600;
+
+  // For split-flap animation: track previous decision
+  const prevDecisionRef = useRef<string | null>(null);
+  const [animate, setAnimate] = useState(false);
+
+  useEffect(() => {
+    if (prevDecisionRef.current !== null && prevDecisionRef.current !== result.decision) {
+      setAnimate(true);
+      // Reset after animation completes
+      setTimeout(() => setAnimate(false), 350);
+    }
+    prevDecisionRef.current = result.decision;
+  }, [result.decision]);
+
+  const decisionClass = `decision-hero ${style.decisionClass} ${animate ? "animate-decision-flap" : ""}`;
+
   return (
-    <section
-      className={`overflow-hidden rounded-xl border ${style.border} ${style.surface}`}
-      aria-live="polite"
-    >
+    <section className="animate-fade-in-up" aria-live="polite">
       {isHistoric && (
-        // A past decision looks identical to a current one, which during a demo is a way to
-        // read a stale verdict as live. Say so, and offer the way back.
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-slate-950/40 px-6 py-2">
-          <span className="text-xs text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-1 py-3 bg-surface-hover/40 rounded-t-lg mx-[-1rem] mb-4">
+          <span className="caption-text">
             Viewing an earlier evaluation from this session.
           </span>
           {onShowLatest && (
             <button
               type="button"
               onClick={onShowLatest}
-              className="text-xs font-medium text-slate-300 underline decoration-slate-600 underline-offset-2 transition hover:text-slate-100"
+              className="label-text font-medium text-text-secondary underline decoration-border underline-offset-2 transition-colors hover:text-text"
             >
               Show latest
             </button>
@@ -55,82 +73,68 @@ export function DecisionCard({
         </div>
       )}
 
-      <div className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            {/* Field 1 of 6: risk level. */}
-            <div className="flex items-center gap-2">
-              <span className={`size-2.5 rounded-full ${style.dot}`} aria-hidden />
-              <span className="text-xs font-medium uppercase tracking-widest text-slate-400">
-                {result.risk_level} heat risk
-              </span>
-            </div>
-
-            {/* Climate zone badge — the rules that produced this decision. */}
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-slate-500">Climate zone:</span>
-              <span className={`font-medium ${style.text}`}>{zone.name}</span>
-              <span className="text-slate-500">(thresholds:</span>
-              <span className="font-mono tabular-nums text-slate-300">
-                {"LOW < "}{zone.mediumThresholdC}°C,{" "}
-                MEDIUM {zone.mediumThresholdC}–{zone.highThresholdC}°C,{" "}
-                HIGH ≥ {zone.highThresholdC}°C
-              </span>
-              <span className="text-slate-500">)</span>
-            </div>
-
-            {/* Field 2 of 6: the decision itself, the one thing readable across a room. */}
-            <h2 className={`mt-2 text-3xl font-semibold tracking-tight ${style.text}`}>
-              {result.decision}
-            </h2>
-            <p className="mt-1 text-sm text-slate-400">{DECISION_HEADLINE[result.decision]}</p>
-          </div>
-
-          {/* Fields 3 and 4: the measured temperatures. Tabular figures so the two columns
-              line up regardless of value width. */}
-          <dl className="flex gap-8">
-            <div>
-              <dt className="text-xs uppercase tracking-widest text-slate-500">Peak</dt>
-              <dd className="mt-1 font-mono text-2xl tabular-nums text-slate-100">
-                {formatTemperature(result.peak_temperature)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-widest text-slate-500">Average</dt>
-              <dd className="mt-1 font-mono text-2xl tabular-nums text-slate-100">
-                {formatTemperature(result.average_temperature)}
-              </dd>
-            </div>
-          </dl>
+      <div className="space-y-5">
+        {/* Hero Decision Badge — spans full width, the one thing readable across a room */}
+        <div className="w-full">
+          <h2
+            className={decisionClass}
+            data-weight={badgeWeight.toString()}
+            style={{ fontWeight: badgeWeight }}
+          >
+            {result.decision}
+          </h2>
+          <p className="mt-2 label-text text-text-secondary text-center">{DECISION_HEADLINE[result.decision]}</p>
         </div>
 
+        {/* Climate zone badge + risk level indicator */}
+        <div className="flex flex-wrap items-center gap-3 justify-center">
+          <div className="flex items-center gap-1.5">
+            <span className={`size-2.5 rounded-full ${style.dot}`} aria-hidden />
+            <span className="section-label text-text-secondary">{result.risk_level} heat risk</span>
+          </div>
+
+          <div className="px-3 py-1 rounded-md bg-modify-surface border border-modify-border text-ember-500 label-text font-medium">
+            {zone.name}
+          </div>
+        </div>
+
+        {/* Temperature readouts — side by side, large mono */}
+        <dl className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5 text-center">
+            <dt className="section-label">Peak</dt>
+            <dd className="temp-display text-text">{formatTemperature(result.peak_temperature)}</dd>
+          </div>
+          <div className="space-y-1.5 text-center">
+            <dt className="section-label">Average</dt>
+            <dd className="temp-display text-text-secondary">{formatTemperature(result.average_temperature)}</dd>
+          </div>
+        </dl>
+
         {result.peak_temperature === null && (
-          <p className="mt-4 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
+          <p className="rounded-lg border border-border bg-surface-hover/50 px-4 py-3 caption-text text-text-muted text-center">
             No temperature readings could be retrieved for this area. The risk level defaults
             to MEDIUM as a safety floor — this is not a measurement.
           </p>
         )}
 
-        <div className="mt-6 space-y-4 border-t border-white/10 pt-5">
+        {/* Recommendation + Reasoning */}
+        <div className="space-y-5 border-t border-border pt-5">
           {/* Field 5 of 6: what to do about it. The reason a supervisor opened this page. */}
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-500">
-              Recommendation
-            </h3>
-            <p className="mt-1.5 text-slate-100">{result.recommendation}</p>
+          <div className="space-y-2">
+            <h3 className="section-label text-center">Recommendation</h3>
+            <p className="body-lg text-center">{result.recommendation}</p>
           </div>
+
           {/* Field 6 of 6: why. Smaller, because it justifies the call rather than being it. */}
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-widest text-slate-500">
-              Reasoning
-            </h3>
-            <p className="mt-1.5 text-sm text-slate-300">{result.reason}</p>
+          <div className="space-y-2">
+            <h3 className="section-label text-center">Reasoning</h3>
+            <p className="body-base text-center">{result.reason}</p>
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+        {/* Metadata footer */}
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-1.5 caption-text text-text-muted border-t border-border pt-4">
           <span>Evaluated {formatTimestamp(result.evaluated_at)}</span>
-          {result.activity_id && <span className="font-mono">job {result.activity_id}</span>}
           <span>
             {result.alert_sent
               ? "Slack alert sent"
@@ -143,3 +147,37 @@ export function DecisionCard({
     </section>
   );
 }
+
+/** Presentation styles keyed by risk level — thresholds enforced in backend/app/risk.py */
+const RISK_STYLES: Record<
+  EvaluateResponse["risk_level"],
+  {
+    text: string;
+    border: string;
+    surface: string;
+    dot: string;
+    decisionClass: string;
+  }
+> = {
+  LOW: {
+    text: "text-proceed",
+    border: "border-proceed-border",
+    surface: "bg-proceed-surface",
+    dot: "bg-proceed",
+    decisionClass: "decision-proceed",
+  },
+  MEDIUM: {
+    text: "text-modify",
+    border: "border-modify-border",
+    surface: "bg-modify-surface",
+    dot: "bg-modify",
+    decisionClass: "decision-modify",
+  },
+  HIGH: {
+    text: "text-reschedule",
+    border: "border-reschedule-border",
+    surface: "bg-reschedule-surface",
+    dot: "bg-reschedule",
+    decisionClass: "decision-reschedule",
+  },
+};

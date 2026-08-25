@@ -51,7 +51,7 @@ export function SearchLocation({
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Close suggestions on escape, click outside, or selection
+  // Close suggestions on escape
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -175,9 +175,7 @@ export function SearchLocation({
   return (
     <div className="relative w-full">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium uppercase tracking-widest text-slate-500">
-          Work site
-        </span>
+        <span className="section-label">Work Site</span>
         <div className="relative">
           <input
             ref={inputRef}
@@ -196,10 +194,10 @@ export function SearchLocation({
             aria-autocomplete="list"
             aria-controls="location-suggestions"
             aria-expanded={isOpen}
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed pr-10"
+            className="input-base pr-10"
           />
           {isSearching && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden>
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"
@@ -226,16 +224,16 @@ export function SearchLocation({
           ref={listRef}
           id="location-suggestions"
           role="listbox"
-          className="absolute z-20 mt-1.5 w-full max-h-60 overflow-auto rounded-lg border border-white/10 bg-slate-950/95 backdrop-blur-sm shadow-lg ring-1 ring-white/5"
+          className="absolute z-[100] mt-2 w-full max-h-72 overflow-auto dropdown-panel animate-fade-in-up"
         >
           {isSearching && suggestions.length === 0 && (
-            <li className="px-4 py-3 text-center text-sm text-slate-500" role="option" aria-disabled>
+            <li className="px-4 py-3 text-center caption-text text-text-muted" role="option" aria-disabled>
               Searching…
             </li>
           )}
 
           {searchError && (
-            <li className="px-4 py-3 text-center text-sm text-risk-high" role="option" aria-disabled>
+            <li className="px-4 py-3 text-center caption-text text-reschedule" role="option" aria-disabled>
               {searchError}
             </li>
           )}
@@ -247,28 +245,28 @@ export function SearchLocation({
               aria-selected={index === highlightedIndex}
               onClick={() => handleClick(result)}
               onMouseEnter={() => setHighlightedIndex(index)}
-              className={`px-4 py-2.5 text-sm transition ${
+              className={`px-4 py-3 caption-text transition-colors ${
                 index === highlightedIndex
-                  ? "bg-white/5 text-slate-100"
-                  : "text-slate-300 hover:bg-white/5"
+                  ? "bg-surface-hover text-text border-l-2 border-ember-500"
+                  : "text-text-secondary hover:bg-surface-hover"
               }`}
             >
               <div className="flex items-baseline gap-2">
-                <span className="font-medium text-slate-100">{result.label}</span>
+                <span className="font-medium text-text">{result.label}</span>
                 {result.state && (
-                  <span className="font-mono text-xs text-slate-500 uppercase">
+                  <span className="font-mono text-xs text-text-muted uppercase">
                     {result.state}
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1.5 text-[0.65rem] text-text-muted">
                 {formatZoneLine(result.climate_zone)}
               </p>
             </li>
           ))}
 
           {suggestions.length === 0 && !isSearching && !searchError && value.length >= 2 && (
-            <li className="px-4 py-3 text-center text-sm text-slate-500" role="option" aria-disabled>
+            <li className="px-4 py-3 text-center caption-text text-text-muted" role="option" aria-disabled>
               No US matches for "{value}". Try a city name, ZIP code, or landmark.
             </li>
           )}
@@ -277,7 +275,7 @@ export function SearchLocation({
 
       {/* Quick hint when no input yet */}
       {!value && !isOpen && !disabled && (
-        <p className="mt-1.5 text-xs text-slate-500">
+        <p className="mt-1.5 caption-text text-text-muted">
           Type a city, address, or landmark in the US. Each result shows its climate
           zone and the temperature thresholds that will apply.
         </p>

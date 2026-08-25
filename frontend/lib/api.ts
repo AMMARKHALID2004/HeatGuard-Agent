@@ -1,4 +1,5 @@
-import { type MockScenarioId, isMockMode, playScenario } from "./mock";
+import { isMockMode } from "./env";
+import { evaluateMock, geocodeMock } from "./api-mock";
 import type {
   ApiErrorBody,
   ApiErrorCode,
@@ -96,24 +97,20 @@ async function readError(response: Response): Promise<ApiError> {
  * Throws `ApiError` for every failure, including the network being down, so callers have
  * one type to catch and one `message` to render.
  *
- * With `USE_MOCK_DATA` set this answers from `lib/mock.ts` and never touches the network.
- * The mock path is deliberately routed through the same `ApiError` constructor as the real
- * one, so an error the dashboard renders offline is the same object it renders in production.
+ * With `NEXT_PUBLIC_USE_MOCK_DATA` set this answers from `lib/api-mock.ts` and never touches
+ * the network. The mock module is a separate file so Next.js can tree-shake it entirely
+ * from production builds when the flag is not set.
  */
 export async function evaluate(
   request: EvaluateRequest,
   options: {
     signal?: AbortSignal;
-    /** Which sample to play. Ignored unless `USE_MOCK_DATA` is on. */
-    mockScenario?: MockScenarioId;
+    /** Which sample to play. Ignored unless `NEXT_PUBLIC_USE_MOCK_DATA` is on. */
+    mockScenario?: "low" | "medium" | "high" | "no-readings" | "fortyguard-timeout" | "agent-rate-limited" | "not-configured";
   } = {},
 ): Promise<EvaluateResponse> {
   if (isMockMode()) {
-    const played = await playScenario(options.mockScenario ?? "high", options.signal);
-    if (played.ok) return played.response;
-    const { status, body } = played.scenario.failure!;
-    const { code, message, hint, retryable } = body.error;
-    throw new ApiError(message, status, code, hint, retryable);
+    return evaluateMock(request, options);
   }
 
   let response: Response;
@@ -134,7 +131,7 @@ export async function evaluate(
       0,
       "unreachable",
       `Start it with \`uvicorn app.main:app --reload --port ${apiPort()}\` from backend/, or set ` +
-        "USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
+        "NEXT_PUBLIC_USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
       true,
     );
   }
@@ -158,54 +155,7 @@ export async function geocode(
   options: { signal?: AbortSignal } = {},
 ): Promise<GeocodeResult[]> {
   if (isMockMode()) {
-    // Mock mode: return a few hardcoded suggestions across different zones so the
-    // search UI can be laid out offline. Never hits the network.
-    return [
-      {
-        label: "Phoenix, Arizona",
-        lat: 33.4484,
-        lon: -112.074,
-        state: "AZ",
-        climate_zone: {
-          name: "Hot-Dry",
-          medium_threshold_c: 36,
-          high_threshold_c: 39,
-        },
-      },
-      {
-        label: "Miami, Florida",
-        lat: 25.7617,
-        lon: -80.1918,
-        state: "FL",
-        climate_zone: {
-          name: "Hot-Humid",
-          medium_threshold_c: 34,
-          high_threshold_c: 37,
-        },
-      },
-      {
-        label: "Minneapolis, Minnesota",
-        lat: 44.9778,
-        lon: -93.265,
-        state: "MN",
-        climate_zone: {
-          name: "Cold / Northern",
-          medium_threshold_c: 27,
-          high_threshold_c: 30,
-        },
-      },
-      {
-        label: "Lower Manhattan, New York",
-        lat: 40.7128,
-        lon: -74.006,
-        state: "NY",
-        climate_zone: {
-          name: "Mixed-Humid",
-          medium_threshold_c: 30,
-          high_threshold_c: 33,
-        },
-      },
-    ];
+    return geocodeMock(query, options);
   }
 
   let response: Response;
@@ -222,7 +172,7 @@ export async function geocode(
       0,
       "unreachable",
       `Start it with \`uvicorn app.main:app --reload --port ${apiPort()}\` from backend/, or set ` +
-        "USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
+        "NEXT_PUBLIC_USE_MOCK_DATA=1 in frontend/.env.local to work on the UI offline.",
       true,
     );
   }

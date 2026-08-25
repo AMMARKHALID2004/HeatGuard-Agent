@@ -216,15 +216,14 @@ export const DEFAULT_MOCK_SCENARIO: MockScenarioId = "high";
 /**
  * Whether the dashboard should answer from `MOCK_SCENARIOS` instead of the backend.
  *
- * Both spellings are accepted. `USE_MOCK_DATA` is the name in CLAUDE.md and is inlined into
- * the client bundle by the `env` block in `next.config.ts`; `NEXT_PUBLIC_USE_MOCK_DATA` works
- * without that mapping, which is what a Vercel dashboard will steer you towards.
+ * Uses `NEXT_PUBLIC_USE_MOCK_DATA` which is inlined into the client bundle by the `env` block
+ * in `next.config.ts`. This is the standard Next.js convention for client-accessible env vars.
  *
  * Read through full `process.env.X` member expressions — Next substitutes these literally at
  * build time, so destructuring or dynamic indexing would silently yield `undefined`.
  */
 export function isMockMode(): boolean {
-  const flag = process.env.USE_MOCK_DATA || process.env.NEXT_PUBLIC_USE_MOCK_DATA || "";
+  const flag = process.env.NEXT_PUBLIC_USE_MOCK_DATA || "";
   return ["1", "true", "yes", "on"].includes(flag.trim().toLowerCase());
 }
 

@@ -15,6 +15,9 @@ import { useEffect, useState } from "react";
  * streams nothing, so this cannot know which step is actually running. It is driven by
  * elapsed time against the real default timings, and says so rather than implying telemetry
  * it does not have.
+ *
+ * Direction 5: Radar sweep on map is the primary loading indicator. This card is secondary,
+ * showing phase detail in the briefing panel.
  */
 
 interface Phase {
@@ -58,34 +61,32 @@ export function PendingCard({ mock = false }: { mock?: boolean }) {
 
   return (
     <section
-      className="rounded-xl border border-white/10 bg-white/[0.03] p-6"
+      className="card-base p-5 animate-fade-in-up"
       aria-busy="true"
-      // Announced politely: a screen reader user gets the phase change without having focus
-      // yanked off the button they just pressed.
       aria-live="polite"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="relative flex size-2.5" aria-hidden>
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-slate-300 opacity-60" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-slate-300" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-ember-500/60" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-ember-500" />
             </span>
-            <span className="text-xs font-medium uppercase tracking-widest text-slate-400">
+            <span className="section-label text-ember-500">
               {mock ? "Playing sample" : "Evaluating"}
             </span>
           </div>
 
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100">
+          <h2 className="mt-2 text-lg font-semibold tracking-tight text-text">
             {phase.label}
           </h2>
-          <p className="mt-1 max-w-md text-sm text-slate-400">{phase.detail}</p>
+          <p className="mt-1 max-w-md body-base text-text-secondary">{phase.detail}</p>
         </div>
 
         <div className="text-right">
-          <div className="text-xs uppercase tracking-widest text-slate-500">Elapsed</div>
+          <div className="caption-text text-text-muted">Elapsed</div>
           {/* Tabular figures so the card does not jitter as the number grows. */}
-          <div className="mt-1 font-mono text-2xl tabular-nums text-slate-300">
+          <div className="mt-1 font-mono text-xl tabular-nums text-text">
             {seconds}s
           </div>
         </div>
@@ -93,16 +94,16 @@ export function PendingCard({ mock = false }: { mock?: boolean }) {
 
       {/* Skeleton standing in for the decision card's own blocks, so the layout does not
           jump when the real content lands. */}
-      <div className="mt-6 space-y-3 border-t border-white/10 pt-5" aria-hidden>
-        <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-full animate-pulse rounded bg-white/[0.07]" />
-        <div className="h-4 w-4/5 animate-pulse rounded bg-white/[0.07]" />
-        <div className="h-3 w-20 animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-white/[0.07]" />
+      <div className="mt-5 space-y-3 border-t border-border pt-4" aria-hidden>
+        <div className="h-3 w-20 animate-pulse rounded bg-surface-hover/70" />
+        <div className="h-4 w-full animate-pulse rounded bg-surface-hover/50" />
+        <div className="h-4 w-3/4 animate-pulse rounded bg-surface-hover/50" />
+        <div className="h-3 w-16 animate-pulse rounded bg-surface-hover/70" />
+        <div className="h-4 w-1/2 animate-pulse rounded bg-surface-hover/50" />
       </div>
 
       {seconds >= 25 && (
-        <p className="mt-5 text-xs text-slate-500">
+        <p className="mt-4 caption-text text-text-muted">
           Taking longer than usual. The backend bounds this itself and will return a timeout
           rather than hanging.
         </p>

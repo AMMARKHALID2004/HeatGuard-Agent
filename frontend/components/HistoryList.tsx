@@ -1,6 +1,6 @@
 "use client";
 
-import { DECISION_HEADLINE, RISK_STYLES, formatTemperature, formatTimestamp } from "@/lib/risk";
+import { DECISION_HEADLINE, formatTemperature, formatTimestamp } from "@/lib/risk";
 import type { EvaluateResponse, SelectedLocation } from "@/lib/types";
 
 interface HistoryEntry {
@@ -18,6 +18,8 @@ interface HistoryEntry {
  *
  * Entries are selectable, which matters during a demo: running three shifts back to back
  * otherwise pushes the interesting decision off screen with no way to get back to it.
+ *
+ * Direction 5: Mission log entries — stacked, selected slides half-out (from Sneaker Box Stack challenger).
  */
 export function HistoryList({
   items,
@@ -29,56 +31,53 @@ export function HistoryList({
   onSelect: (id: number) => void;
 }) {
   return (
-    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-slate-500">
-          Evaluation history
-        </h2>
+    <section className="animate-fade-in-up">
+      <div className="flex items-baseline justify-between gap-4 mb-3">
+        <h2 className="section-label">Mission Log</h2>
         {items.length > 0 && (
-          <span className="text-xs text-slate-600">
+          <span className="caption-text text-text-muted">
             {items.length} this session
           </span>
         )}
       </div>
 
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No evaluations yet this session.</p>
+        <p className="caption-text text-text-muted text-center py-4">No evaluations yet this session.</p>
       ) : (
-        <ol className="mt-2 divide-y divide-white/5">
+        <ol className="space-y-2" role="list" aria-label="Evaluation history">
           {items.map(({ id, result, location }) => {
-            const style = RISK_STYLES[result.risk_level];
             const isSelected = id === selectedId;
+
+            // Map decisions to color keys
+            const colorKey = result.decision === "PROCEED" ? "proceed" : result.decision === "MODIFY" ? "modify" : "reschedule";
+
             return (
               <li key={id}>
                 <button
                   type="button"
                   onClick={() => onSelect(id)}
                   aria-current={isSelected ? "true" : undefined}
-                  className={`flex w-full items-center justify-between gap-4 rounded-lg px-2 py-2.5 text-left transition ${
-                    isSelected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
-                  }`}
+                  aria-pressed={isSelected}
+                  data-selected={isSelected}
+                  className="log-entry w-full"
                 >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className={`size-2 shrink-0 rounded-full ${style.dot}`} aria-hidden />
-                    <span className={`text-sm font-medium ${style.text}`}>
-                      {result.decision}
+                  <span className={`size-2.5 shrink-0 rounded-full bg-${colorKey}`} aria-hidden />
+                  <span className={`font-medium text-${colorKey} flex-1 truncate`}>
+                    {result.decision}
+                  </span>
+                  <span className="caption-text text-text-secondary truncate flex-1 min-w-0">
+                    {formatTimestamp(result.evaluated_at)} · {location.label}
+                  </span>
+                  {/* Only shown when an alert was actually delivered */}
+                  {result.alert_sent && (
+                    <span className="shrink-0 caption-text text-text-muted" title="Slack alert sent">
+                      alerted
                     </span>
-                    <span className="truncate text-xs text-slate-500">
-                      {formatTimestamp(result.evaluated_at)} · {location.label}
-                    </span>
-                    {/* Only shown when an alert was actually delivered — the decision card
-                        carries the full story, including the failed-to-deliver case. */}
-                    {result.alert_sent && (
-                      <span className="shrink-0 text-xs text-slate-600" title="Slack alert sent">
-                        alerted
-                      </span>
-                    )}
-                  </div>
-                  <span className="shrink-0 font-mono text-sm text-slate-400">
+                  )}
+                  <span className="shrink-0 font-mono text-sm tabular-nums text-text-secondary">
                     {formatTemperature(result.peak_temperature)}
                   </span>
-                  {/* The decision word alone is ambiguous out of context in a list; the
-                      headline is read out to make each row self-describing. */}
+                  {/* Headline read out for accessibility */}
                   <span className="sr-only">{DECISION_HEADLINE[result.decision]}</span>
                 </button>
               </li>

@@ -27,28 +27,28 @@ export function ErrorAlert({
   isRetrying: boolean;
 }) {
   return (
-    <div
+    <section
       role="alert"
-      className="rounded-xl border border-risk-high/40 bg-risk-high/10 px-5 py-4"
+      className="card-base border-reschedule-border bg-reschedule-surface p-5 animate-fade-in-up"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-xs font-medium uppercase tracking-widest text-risk-high/80">
+        <span className="section-label text-reschedule">
           Evaluation failed
         </span>
         {/* The code is the join between this box and the backend log, which records the real
             cause under the same string. A screenshot is then enough to find the log line. */}
         {error.code !== "unknown" && (
-          <code className="font-mono text-xs text-risk-high/60">
+          <code className="font-mono caption-text text-reschedule/70">
             {error.status > 0 ? `${error.status} · ` : ""}
             {error.code}
           </code>
         )}
       </div>
 
-      <p className="mt-1.5 text-sm text-slate-100">{error.message}</p>
+      <p className="mt-2 body-base text-text">{error.message}</p>
 
       {error.hint && (
-        <p className="mt-2 border-l-2 border-risk-high/30 pl-3 text-xs leading-relaxed text-slate-400">
+        <p className="mt-3 border-l-2 border-reschedule-border/30 pl-3 caption-text text-text-muted">
           {error.hint}
         </p>
       )}
@@ -58,15 +58,15 @@ export function ErrorAlert({
           type="button"
           onClick={onRetry}
           disabled={isRetrying}
-          className="mt-3.5 rounded-md border border-risk-high/40 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-risk-high/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 btn-secondary w-full sm:w-auto"
         >
           {isRetrying ? "Retrying…" : "Try again"}
         </button>
       ) : (
-        <p className="mt-3.5 text-xs text-slate-500">
+        <p className="mt-4 caption-text text-text-muted">
           This requires a server-side fix — retrying will not help.
         </p>
       )}
-    </div>
+    </section>
   );
 }

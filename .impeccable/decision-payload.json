@@ -1,0 +1,167 @@
+{
+  "title": "HeatGuard Agent — Visual World Direction",
+  "question": "The roll assigned Mission Control Console. Keep it, take the Surveyor's Total Station (Impeccable's Pick), take a challenger, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Mission Control Console",
+      "kicker": "THE ROLL",
+      "lineage": "NASA MCC, SpaceX Hawthorne, ESA ESOC — where 'Go for launch' is a recorded, defensible decision by named officers",
+      "thesis": "The dashboard is a flight director's console: event timeline, telemetry strips, anomaly flags — the PROCEED/MODIFY/RESCHEDULE call is a GO/NO-GO poll with authority.",
+      "palette": ["#030712", "#0c1a2b", "#112d4a", "#1e3a5f", "#2563eb", "#3b82f6", "#60a5fa", "#fbbf24", "#f87171", "#22c55e"],
+      "materials": ["deep space black", "console gray panels", "amber event markers", "green GO / red NO-GO / amber HOLD", "monospace telemetry"],
+      "type": "JetBrains Mono for all telemetry, IBM Plex Sans for officer labels, Space Grotesk for headers",
+      "viewport": "Landscape console. Top 20%: event timeline (horizontal, newest right). Middle 60%: three vertical strips — LEFT: map with AOI, CENTER: temperature trend sparkline with threshold bands, RIGHT: climate zone + thresholds. Bottom 20%: DECISION POLL — large GO/HOLD/NO-GO buttons, officer ID (supervisor name), timestamp, voice loop indicator (Slack). Recommendation/reason in CAPCOM strip.",
+      "risk": "The console density can overwhelm. The decision poll must be the visual climax — everything else supports it. Mobile requires collapsing to single-strip scroll.",
+      "raised": [
+        {
+          "from": "challenger-1",
+          "raise": "Hazard-stripe threshold bands on the temperature sparkline — the isotherm diagonal crosses the trend when risk breaches MEDIUM/HIGH"
+        },
+        {
+          "from": "challenger-3",
+          "raise": "Split-flap animation on the decision poll — GO/HOLD/NO-GO cascades character-by-character like a concourse board, making the call unmissable"
+        },
+        {
+          "from": "challenger-4",
+          "raise": "Variable-font weight axis on the decision badge — the word PROCEED/MODIFY/RESCHEDULE thickens from Regular to Black as confidence rises"
+        },
+        {
+          "from": "challenger-5",
+          "raise": "Carbon-copy memo styling for recommendation/reason — the CAPCOM strip reads like a filled flight coupon, authoritative and archival"
+        },
+        {
+          "from": "challenger-6",
+          "raise": "Particle-mote ambient background in the console void — subtle depth cue that the timeline strips float in, reinforcing the 'room' metaphor"
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.webp",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-console-dashboard-atmosphere-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/digital-design-canon-console-dashboard-atmosphere.webp"
+    },
+    {
+      "id": "model-pick",
+      "label": "Surveyor's Total Station",
+      "kicker": "IMPECCABLE'S PICK",
+      "lineage": "Leica, Trimble, Topcon total stations — the instrument supervisors respect for 'this is where the line goes'",
+      "thesis": "The dashboard is a precision surveying instrument: clean grid, monospace angular readouts, hierarchical data density — every pixel serves the measurement.",
+      "palette": ["#0a0f1a", "#0d1b2a", "#1b263b", "#415a77", "#778da9", "#e0e1dd"],
+      "materials": ["matte charcoal ground", "fine hairline grid", "cyan/amber measurement text", "subtle elevation contours"],
+      "type": "Monospace for all measurements (JetBrains Mono), UI labels in Space Grotesk at 11px",
+      "viewport": "Center: map with crosshair and bearing rings. Right: stacked readout panels — Site ID, Climate Zone, Peak/Avg Temp, Decision (large), Recommendation. Bottom: status bar with satellite count, battery, time.",
+      "risk": "Can feel too sparse for a dashboard that needs to show reasoning text. The recommendation/reason fields need breathing room without breaking the instrument density.",
+      "comp": ".impeccable/mocks/decision/model-pick.webp"
+    },
+    {
+      "id": "challenger-1",
+      "label": "Industrial Streetwear Grammar",
+      "kicker": "CHALLENGER",
+      "lineage": "textiles-weave-drape-fashion-industrial-quote-grammar",
+      "thesis": "Ordinary words set in straight quotation marks, zip-tie tags left on, diagonal hazard stripes crossing white cotton and black nylon.",
+      "palette": ["#ffffff", "#000000", "#ff6600", "#e0e0e0", "#1a1a1a"],
+      "materials": ["stockroom white cotton", "black nylon", "black-on-white hazard diagonals", "safety orange zip-tie tags"],
+      "type": "Bold industrial caps inside straight quotation marks, label plates set square on the grid like stenciled crates",
+      "viewport": "Hazard-stripe diagonals (45deg) as section dividers. Every label wrapped in straight quotes via ::before/::after. Active zone keeps orange zip-tie tag. Decision badge = large quoted word with hazard stripe behind it.",
+      "case": "Fuses well: hazard stripes become threshold bands on the temperature sparkline; quoted labels map to climate zone badges. Loses on authority — reads as style over instrument.",
+      "verdict": "declined",
+      "kept": "Hazard-stripe threshold bands on the temperature sparkline — the isotherm diagonal crosses the trend when risk breaches MEDIUM/HIGH",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar.webp"
+    },
+    {
+      "id": "challenger-2",
+      "label": "Mesophotic Deep Dive",
+      "kicker": "CHALLENGER",
+      "lineage": "rivers-tides-ocean-depths-mesophotic-deep-dive",
+      "thesis": "A technical deep dive down a volcanic island wall — one small diver crosses a thermocline into a mesophotic garden of black coral and marine snow.",
+      "palette": ["#000814", "#001d3d", "#003566", "#0077b6", "#00b4d8", "#ffffff"],
+      "materials": ["abyssal ink blue", "chalk-white marine snow particles", "thermocline cyan band", "bioluminescent accent"],
+      "type": "Monospaced dive-computer digits for depth/gas beside quiet grotesk notes, one vertical depth axis ruling every line",
+      "viewport": "Vertical depth profile as primary navigation. Surface → thermocline → reef ledge → mesophotic wall → turnaround → ascent. Temperature trend = depth profile. Decision = turnaround depth marker.",
+      "case": "Fuses poorly: construction supervisors don't identify with dive profiles. The vertical metaphor fights the map's horizontal nature.",
+      "verdict": "declined",
+      "kept": "Single thermocline cyan band as the active threshold marker — a clear line between 'above' and 'below' safe limits",
+      "hero": "https://impeccable.style/worlds/cards/rivers-tides-ocean-depths-mesophotic-deep-dive-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/rivers-tides-ocean-depths-mesophotic-deep-dive.webp"
+    },
+    {
+      "id": "challenger-3",
+      "label": "Rail Concourse Split-Flap Board",
+      "kicker": "CHALLENGER",
+      "lineage": "signals-instruments-split-flap-concourse",
+      "thesis": "Cascading letter flaps, platform columns, and departure rhythm hold a thousand travelers in one gaze.",
+      "palette": ["#000000", "#ffffff", "#ffaa00", "#ff3333", "#cccccc"],
+      "materials": ["matte black flap faces", "white paint letters", "brushed steel frame", "amber row lamps", "dim red cancelled type"],
+      "type": "One condensed white sans on every flap, characters in fixed cells, destinations in caps",
+      "viewport": "Split-flap board as the decision display. Rows = evaluations ranked by time. Columns = Site, Zone, Peak, Avg, Decision. The decision column flaps PROCEED → MODIFY → RESCHEDULE.",
+      "case": "Fuses cleanly: evaluations map to rows; decision column is the departure status. Holds clarity. Loses on spatial mapping — the map and board live in different visual languages.",
+      "verdict": "competitive",
+      "kept": "Split-flap animation on the decision poll — GO/HOLD/NO-GO cascades character-by-character like a concourse board, making the call unmissable",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse.webp"
+    },
+    {
+      "id": "challenger-4",
+      "label": "Variable Font Specimen",
+      "kicker": "CHALLENGER",
+      "lineage": "variable-font-specimen",
+      "thesis": "A single giant letter fills the screen. Drag the weight slider and it thickens from hairline to black under your finger.",
+      "palette": ["#fafafa", "#0a0a0a", "#e0e0e0", "#1a1a1a", "#0066ff"],
+      "materials": ["near-white paper", "ink black", "one foundry accent", "flat surfaces", "generous negative space"],
+      "type": "The specimen face at enormous display size against tiny monospace UI labels; strict measure and baseline grid; hierarchy by scale contrast alone",
+      "viewport": "Decision word (PROCEED/MODIFY/RESCHEDULE) at hero scale, driven by font-variation-settings. Slider = confidence axis. Grid of all glyphs breathes in step below.",
+      "case": "Fuses beautifully on the decision badge: variable weight = decision confidence. Loses on information density — a specimen shows one thing, a dashboard shows many.",
+      "verdict": "declined",
+      "kept": "Variable-font weight axis on the decision badge — the word PROCEED/MODIFY/RESCHEDULE thickens from Regular to Black as confidence rises",
+      "hero": "https://impeccable.style/worlds/cards/variable-font-specimen-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/variable-font-specimen.webp"
+    },
+    {
+      "id": "challenger-5",
+      "label": "Jet-Age Airline Ticket Wallet",
+      "kicker": "CHALLENGER",
+      "lineage": "vernacular-ephemera-jet-age-ticket-wallet",
+      "thesis": "Red carbon numerals, a fold-out route arc, a stapled baggage stub — the whole Atlantic crossing fits in a paper wallet.",
+      "palette": ["#ffffff", "#001f3f", "#ff0000", "#660066", "#ffcc00"],
+      "materials": ["carrier navy", "red over crisp white coupon stock", "carbon purple", "red VOID stamp"],
+      "type": "Airline grotesk caps on tabbed coupon heads, fare boxes ruled in hairlines, carbon numerals striking fixed fields",
+      "viewport": "Coupon book flow. Each evaluation = one coupon leg. Site/Zone/Temp/Decision = fixed fields on the coupon. RESCHEDULE = red VOID stamp. History = torn coupons in wallet.",
+      "case": "Fuses on authority: filled coupons are archival records. The carbon-copy memo for recommendation/reason transfers perfectly. Loses on live feel — coupons are static, our data is live.",
+      "verdict": "declined",
+      "kept": "Carbon-copy memo styling for recommendation/reason — the CAPCOM strip reads like a filled flight coupon, authoritative and archival",
+      "hero": "https://impeccable.style/worlds/cards/vernacular-ephemera-jet-age-ticket-wallet-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/vernacular-ephemera-jet-age-ticket-wallet.webp"
+    },
+    {
+      "id": "challenger-6",
+      "label": "Sixth-Gen System Menu",
+      "kicker": "CHALLENGER",
+      "lineage": "digital-design-canon-console-dashboard-atmosphere",
+      "thesis": "Memory towers drifting like monoliths in fog, cubic rooms of ambient particle light standing in for chrome.",
+      "palette": ["#030712", "#0c1a2b", "#112d4a", "#ffffff", "#ffaa00", "#22c55e", "#ef4444"],
+      "materials": ["deep black-blue void", "milky translucent towers", "drifting white particle motes", "warm amber selection glow"],
+      "type": "Sparse thin sans labels floating beside objects, no panels or rules, composition is objects arranged in depth",
+      "viewport": "3D console void. Three floating panels (map, telemetry, decision) drift in fog. Selection swells panel forward. Particle motes indicate depth.",
+      "case": "Same catalog ID as assigned direction — this IS the assigned world's source. The assignment fused it with Mission Control grammar.",
+      "verdict": "declined",
+      "kept": "Particle-mote ambient background in the console void — subtle depth cue that the timeline strips float in, reinforcing the 'room' metaphor",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-console-dashboard-atmosphere-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/digital-design-canon-console-dashboard-atmosphere.webp"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "Standard Dashboard",
+    "thesis": "What this category ships — clean cards, data tables, status badges — executed at impeccable craft.",
+    "palette": ["#ffffff", "#111827", "#2563eb", "#22c55e", "#fbbf24", "#ef4444"],
+    "materials": ["clean grid", "product photography", "standard components"],
+    "viewport": "The arrangement a visitor expects: header, search, map left, decision card right, history below. At full fidelity: precise spacing, perfect contrast, smooth motion.",
+    "risk": "Indistinguishable from the competition by design. No mechanism demonstration.",
+    "comp": ".impeccable/mocks/decision/canon.webp"
+  },
+  "buildPath": { "value": "comp", "toggle": true },
+  "steer": true
+}
