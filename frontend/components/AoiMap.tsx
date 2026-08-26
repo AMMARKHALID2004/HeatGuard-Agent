@@ -48,7 +48,7 @@ export function AoiMap({
       </div>
 
       {/* Threshold legend — bottom-left overlay on map */}
-      <div className="absolute bottom-5 left-5 right-5 sm:left-5 sm:right-auto sm:max-w-xs pointer-events-none z-10">
+      <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs pointer-events-none z-10">
         <div className="card-elevated p-3 pointer-events-auto animate-fade-in-up" style={{ animationDelay: "200ms" }}>
           <p className="section-label mb-2">Temperature thresholds</p>
           <ul className="flex flex-col gap-2">
@@ -80,8 +80,8 @@ export function AoiMap({
         </div>
       </div>
 
-      {/* Climate zone — top-right */}
-      <div className="absolute top-20 right-5 z-10 pointer-events-none sm:top-[100px]">
+      {/* Climate zone — top-right of the map pane */}
+      <div className="absolute top-3 right-3 z-10 pointer-events-none">
         <div className="card-elevated px-3 py-2 pointer-events-auto animate-fade-in-up" style={{ animationDelay: "300ms" }}>
           <p className="caption-text text-text-muted flex items-center gap-2">
             <span className="font-medium text-text">Climate zone:</span>
@@ -91,7 +91,7 @@ export function AoiMap({
       </div>
 
       {/* Coordinates — bottom-right, collapsible */}
-      <details className="absolute bottom-5 right-5 z-10 pointer-events-none group">
+      <details className="absolute bottom-3 right-3 z-10 pointer-events-none group hidden sm:block">
         <summary className="card-elevated px-3 py-2 pointer-events-auto cursor-pointer select-none flex items-center gap-2 caption-text text-text-muted">
           <span>Coordinates</span>
           <svg className="size-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

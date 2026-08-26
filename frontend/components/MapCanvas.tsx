@@ -65,8 +65,7 @@ export function MapCanvas({
       maxZoom: 20,
     }).addTo(map);
 
-    // Add zoom control in bottom-right (out of the way)
-    L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.control.zoom({ position: "topleft" }).addTo(map);
 
     // Main AOI polygon
     const polygon = L.polygon(latlngs, styleFor(riskLevel)).addTo(map);
