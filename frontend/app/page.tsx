@@ -258,6 +258,10 @@ export default function DashboardPage() {
                 ))}
               </div>
 
+              <p className="caption-text text-text-muted text-center">
+                Live temperature data typically available midday–afternoon (12–4 PM local).
+              </p>
+
               <button
                 type="button"
                 onClick={runEvaluation}

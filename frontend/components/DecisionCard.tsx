@@ -114,6 +114,11 @@ export function DecisionCard({
           <p className="rounded-lg border border-border bg-surface-hover/50 px-4 py-3 caption-text text-text-muted text-center">
             No temperature readings could be retrieved for this area. The risk level defaults
             to MEDIUM as a safety floor — this is not a measurement.
+            {result.climate_zone && (
+              <span className="ml-2 inline-block">
+                <br />Live data typically available around midday–afternoon (12–4 PM local).
+              </span>
+            )}
           </p>
         )}
 
