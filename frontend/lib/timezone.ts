@@ -6,7 +6,7 @@ import tzLookup from "tz-lookup";
  */
 export function getTimezone(lat: number, lon: number): string {
   try {
-    return tzLookup(lon, lat) || "UTC";
+    return tzLookup(lat, lon) || "UTC";
   } catch {
     return "UTC";
   }
