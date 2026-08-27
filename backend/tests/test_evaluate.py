@@ -32,7 +32,7 @@ from app.agent import (
 )
 from app.config import Settings, get_settings
 from app.main import app
-from app.risk import UNKNOWN_REASON
+from app.risk import UNMEASURABLE_REASON as UNKNOWN_REASON
 from app.schemas import AgentDecision
 from app.services import slack
 from app.services.fortyguard import (

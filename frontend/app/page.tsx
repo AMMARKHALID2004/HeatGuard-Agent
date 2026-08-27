@@ -57,6 +57,7 @@ const DEMO_LOCATION: SelectedLocation = {
 
 /** Time window options — up to 12h ahead matching FortyGuard's forecast window. */
 const TIME_WINDOWS = [
+  { label: "Demo (Jul 15, 2 PM)", hours: "demo", demoDate: "2024-07-15T14:00:00" },
   { label: "Now", hours: 0 },
   { label: "+3h", hours: 3 },
   { label: "+6h", hours: 6 },
@@ -78,7 +79,7 @@ export default function DashboardPage() {
   );
 
   // Time window selection state
-  const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindowLabel>("Now");
+  const [selectedTimeWindow, setSelectedTimeWindow] = useState<TimeWindowLabel>("Demo (Jul 15, 2 PM)");
   // The actual ISO string sent to backend (computed from site timezone + window)
   const [dateTime, setDateTime] = useState("");
 
@@ -96,10 +97,18 @@ export default function DashboardPage() {
 
   // Update dateTime when timezone or time window changes
   useEffect(() => {
-    const iso = dateTimeLocalStringInTimezone(
-      siteTimezone,
-      TIME_WINDOWS.find((w) => w.label === selectedTimeWindow)?.hours ?? 0
-    );
+    const window = TIME_WINDOWS.find((w) => w.label === selectedTimeWindow);
+    if (!window) return;
+    
+    let iso: string;
+    if (window.hours === "demo" && window.demoDate) {
+      iso = window.demoDate;
+    } else {
+      iso = dateTimeLocalStringInTimezone(
+        siteTimezone,
+        typeof window.hours === "number" ? window.hours : 0
+      );
+    }
     setDateTime(iso);
   }, [siteTimezone, selectedTimeWindow]);
 

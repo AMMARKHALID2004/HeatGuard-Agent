@@ -43,9 +43,10 @@ def decision_for(risk_level: RiskLevel) -> Decision:
 # there is nothing to back it — so missing data floors to caution instead of being handed
 # to the model to guess. This is a documented default, not a measurement: the temperatures
 # stay null so the dashboard still shows the data as unavailable.
-UNKNOWN_RISK_LEVEL: RiskLevel = "UNKNOWN"
+UNMEASURABLE_RISK_LEVEL: RiskLevel = "MEDIUM"
+UNMEASURABLE_DECISION: Decision = "MODIFY"
 
-NO_DATA_REASON = (
+UNMEASURABLE_REASON = (
     "FortyGuard returned no temperature readings for this area and time. The API may not have "
     "data for early morning hours. Try a later time window or verify conditions on-site."
 )
@@ -121,13 +122,14 @@ def enforce_thresholds(
     dashboard and the Slack alert print them next to the verdict that actually shipped.
     """
     if decision.peak_temperature is None:
-        risk_level = UNKNOWN_RISK_LEVEL
-        reason = NO_DATA_REASON
+        risk_level = UNMEASURABLE_RISK_LEVEL
+        outcome = UNMEASURABLE_DECISION
+        reason = UNMEASURABLE_REASON
     else:
         risk_level = classify(decision.peak_temperature, zone)
+        outcome = decision_for(risk_level)
         reason = reason_for(decision.peak_temperature, zone)
 
-    outcome = decision_for(risk_level)
     updates: dict[str, object] = {"risk_level": risk_level, "decision": outcome}
 
     if (decision.risk_level, decision.decision) != (risk_level, outcome):

@@ -139,14 +139,13 @@ function styleFor(riskLevel: RiskLevel | null): L.PathOptions {
       color: "oklch(0.52 0.22 25)",      // deep crimson
       fillColor: "oklch(0.52 0.22 25 / 0.15)",
     },
+    UNKNOWN: {
+      color: "oklch(0.55 0.03 250)",
+      fillColor: "oklch(0.55 0.03 250 / 0.1)",
+    },
   };
 
-  const neutral = {
-    color: "oklch(0.55 0.03 250)",
-    fillColor: "oklch(0.55 0.03 250 / 0.1)",
-  };
-
-  const { color, fillColor } = riskLevel ? colors[riskLevel] : neutral;
+  const { color, fillColor } = riskLevel ? colors[riskLevel] : colors.UNKNOWN;
   return { color, weight: 2, fillColor, fillOpacity: 1 };
 }
 
@@ -164,6 +163,10 @@ function getGradientColors(riskLevel: RiskLevel): { inner: string; outer: string
     HIGH: {
       inner: "oklch(0.52 0.22 25 / 0.25)",
       outer: "oklch(0.52 0.22 25)",
+    },
+    UNKNOWN: {
+      inner: "oklch(0.55 0.03 250 / 0.25)",
+      outer: "oklch(0.55 0.03 250)",
     },
   };
   return gradients[riskLevel];

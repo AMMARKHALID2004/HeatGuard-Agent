@@ -539,7 +539,7 @@ class UnmeasurableAreaTests(AgentTestCase):
         # The model's reason described a temperature that got nulled; it must not survive
         # next to a blank peak on the card.
         self.assertNotIn("41.2", result.reason)
-        self.assertIn("no usable temperature readings", result.reason.lower())
+        self.assertIn("fortyguard returned no temperature readings", result.reason.lower())
 
     async def test_risk_level_and_decision_never_contradict_each_other(self):
         """A mismatched pair must be repaired, not passed through."""
