@@ -22,6 +22,7 @@ _DECISION_FOR_RISK: dict[RiskLevel, Decision] = {
     "LOW": "PROCEED",
     "MEDIUM": "MODIFY",
     "HIGH": "RESCHEDULE",
+    "UNKNOWN": "NO_DATA",
 }
 
 
@@ -42,11 +43,11 @@ def decision_for(risk_level: RiskLevel) -> Decision:
 # there is nothing to back it — so missing data floors to caution instead of being handed
 # to the model to guess. This is a documented default, not a measurement: the temperatures
 # stay null so the dashboard still shows the data as unavailable.
-UNKNOWN_RISK_LEVEL: RiskLevel = "MEDIUM"
+UNKNOWN_RISK_LEVEL: RiskLevel = "UNKNOWN"
 
-UNKNOWN_REASON = (
-    "No usable temperature readings were available for this area, so the shift is treated "
-    "as caution by default rather than cleared."
+NO_DATA_REASON = (
+    "FortyGuard returned no temperature readings for this area and time. The API may not have "
+    "data for early morning hours. Try a later time window or verify conditions on-site."
 )
 
 
@@ -93,6 +94,10 @@ _RECOMMENDATION_FOR_RISK: dict[RiskLevel, str] = {
         "Move outdoor work out of this window. For anything that cannot be moved, work "
         "short rotations in shade with someone watching the crew for heat illness."
     ),
+    "UNKNOWN": (
+        "No temperature data available from FortyGuard for this time. Try a later shift "
+        "window (midday–afternoon) or verify conditions on-site before committing the crew."
+    ),
 }
 
 
@@ -117,9 +122,7 @@ def enforce_thresholds(
     """
     if decision.peak_temperature is None:
         risk_level = UNKNOWN_RISK_LEVEL
-        # Replaced, not appended: a model reason written about a temperature it was told to
-        # drop would sit next to a blank peak on the card.
-        reason = UNKNOWN_REASON
+        reason = NO_DATA_REASON
     else:
         risk_level = classify(decision.peak_temperature, zone)
         reason = reason_for(decision.peak_temperature, zone)

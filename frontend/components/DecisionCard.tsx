@@ -35,8 +35,8 @@ export function DecisionCard({
   const zoneKey = zoneKeyFromInfo(result.climate_zone);
   const zone = resolveZone(zoneKey);
 
-  // Decision badge weight mapping: LOW=400, MEDIUM=600, HIGH=700 (confidence)
-  const weightMap: Record<string, number> = { LOW: 400, MEDIUM: 600, HIGH: 700 };
+  // Decision badge weight mapping: LOW=400, MEDIUM=600, HIGH=700, UNKNOWN=600 (confidence)
+  const weightMap: Record<string, number> = { LOW: 400, MEDIUM: 600, HIGH: 700, UNKNOWN: 600 };
   const badgeWeight = weightMap[result.risk_level] ?? 600;
 
   // For split-flap animation: track previous decision
@@ -112,11 +112,10 @@ export function DecisionCard({
 
         {result.peak_temperature === null && (
           <p className="rounded-lg border border-border bg-surface-hover/50 px-4 py-3 caption-text text-text-muted text-center">
-            No temperature readings could be retrieved for this area. The risk level defaults
-            to MEDIUM as a safety floor — this is not a measurement.
+            No temperature readings could be retrieved for this area.
             {result.climate_zone && (
               <span className="ml-2 inline-block">
-                <br />Live data typically available around midday–afternoon (12–4 PM local).
+                <br />FortyGuard may not have data for early morning hours. Try a later time window (midday–afternoon) or verify conditions on-site.
               </span>
             )}
           </p>
@@ -184,5 +183,12 @@ const RISK_STYLES: Record<
     surface: "bg-reschedule-surface",
     dot: "bg-reschedule",
     decisionClass: "decision-reschedule",
+  },
+  UNKNOWN: {
+    text: "text-modify",
+    border: "border-modify-border",
+    surface: "bg-modify-surface",
+    dot: "bg-modify",
+    decisionClass: "decision-modify",
   },
 };

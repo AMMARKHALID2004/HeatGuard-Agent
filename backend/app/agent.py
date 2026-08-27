@@ -124,6 +124,7 @@ never adjust them, reinterpret them, or substitute your own judgement:
   LOW          peak < {medium:g} C                        PROCEED
   MEDIUM       {medium:g} C <= peak < {high:g} C              MODIFY
   HIGH         peak >= {high:g} C                       RESCHEDULE
+  UNKNOWN      no data available                NO_DATA
 
 Never invent, estimate, extrapolate, or fill in a temperature. Use only the numbers you
 were given. If a temperature was not provided, return null for it and say it was
@@ -141,10 +142,10 @@ you may name the {zone.name} zone to explain why this cutoff applies.
 Reply with a single JSON object and nothing else — no prose, no markdown fences — with
 exactly these six keys:
 
-{{"risk_level": "LOW" | "MEDIUM" | "HIGH",
+{{"risk_level": "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN",
   "peak_temperature": number | null,
   "average_temperature": number | null,
-  "decision": "PROCEED" | "MODIFY" | "RESCHEDULE",
+  "decision": "PROCEED" | "MODIFY" | "RESCHEDULE" | "NO_DATA",
   "recommendation": "...",
   "reason": "..."}}
 """

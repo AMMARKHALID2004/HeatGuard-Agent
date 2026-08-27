@@ -90,7 +90,13 @@ def summarize_heatmap(payload: Any) -> dict[str, Any]:
     Temperatures are `None` when the payload held no usable readings, so the agent reports
     missing data instead of inventing a number.
     """
-    temperatures = _collect_temperatures(_coerce(payload))
+    coerced = _coerce(payload)
+    logger.info("DEBUG: Heatmap payload type=%s, keys=%s",
+                type(coerced).__name__,
+                sorted(coerced.keys())[:30] if isinstance(coerced, dict) else "n/a")
+    if isinstance(coerced, dict):
+        logger.info("DEBUG: Full payload: %s", json.dumps(coerced, default=str)[:5000])
+    temperatures = _collect_temperatures(coerced)
     if not temperatures:
         logger.warning(
             "No temperature readings found in the heatmap result (type=%s, keys=%s)",

@@ -31,6 +31,13 @@ export const RISK_STYLES: Record<
     dot: "bg-risk-high",
     fill: "var(--color-risk-high, oklch(0.66 0.19 25))",
   },
+  UNKNOWN: {
+    text: "text-risk-medium",
+    border: "border-risk-medium/40",
+    surface: "bg-risk-medium/10",
+    dot: "bg-risk-medium",
+    fill: "var(--color-risk-medium, oklch(0.8 0.15 78))",
+  },
 };
 
 /** Neutral outline used before the first evaluation. */
@@ -40,6 +47,7 @@ export const DECISION_HEADLINE: Record<Decision, string> = {
   PROCEED: "Work can proceed as planned",
   MODIFY: "Proceed with modifications",
   RESCHEDULE: "Reschedule this shift",
+  NO_DATA: "No temperature data available",
 };
 
 export function formatTemperature(value: number | null): string {

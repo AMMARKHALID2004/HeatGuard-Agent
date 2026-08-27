@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .climate import ClimateZone
 
-RiskLevel = Literal["LOW", "MEDIUM", "HIGH"]
-Decision = Literal["PROCEED", "MODIFY", "RESCHEDULE"]
+RiskLevel = Literal["LOW", "MEDIUM", "HIGH", "UNKNOWN"]
+Decision = Literal["PROCEED", "MODIFY", "RESCHEDULE", "NO_DATA"]
 
 
 class ClimateZoneInfo(BaseModel):

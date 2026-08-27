@@ -1,7 +1,7 @@
 /** Contract mirrored from `backend/app/schemas.py`. Keep the two in sync. */
 
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
-export type Decision = "PROCEED" | "MODIFY" | "RESCHEDULE";
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN";
+export type Decision = "PROCEED" | "MODIFY" | "RESCHEDULE" | "NO_DATA";
 
 /** `[longitude, latitude]` in WGS84 degrees. */
 export type Coordinate = [number, number];
