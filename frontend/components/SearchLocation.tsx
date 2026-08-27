@@ -50,6 +50,7 @@ export function SearchLocation({
   const listRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const selectingRef = useRef(false);
 
   // Close suggestions on escape
   useEffect(() => {
@@ -146,11 +147,16 @@ export function SearchLocation({
         state: result.state,
         aoi: buildAoiRing(result.lat, result.lon),
       };
+      selectingRef.current = true;
       onSelect(location);
       onChange(result.label);
       setSuggestions([]);
+      setSearchError(null);
+      setIsSearching(false);
       setHighlightedIndex(-1);
       inputRef.current?.blur();
+      // Reset flag after blur handler would have run
+      setTimeout(() => { selectingRef.current = false; }, 200);
     },
     [onChange, onSelect]
   );
@@ -186,7 +192,13 @@ export function SearchLocation({
             onFocus={() => runSearch(value)}
             onBlur={() => {
               // Delay closing so click on suggestion registers
-              setTimeout(() => setSuggestions([]), 150);
+              setTimeout(() => {
+                if (!selectingRef.current) {
+                  setSuggestions([]);
+                  setSearchError(null);
+                  setIsSearching(false);
+                }
+              }, 150);
             }}
             disabled={disabled}
             placeholder={placeholder}
