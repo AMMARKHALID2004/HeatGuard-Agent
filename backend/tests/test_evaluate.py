@@ -15,7 +15,7 @@ Two layers, on purpose:
 
 import json
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -431,72 +431,6 @@ class OrchestrationTests(RouteTestCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertFalse(response.json()["alert_sent"])
-
-    def test_a_now_request_falls_back_to_the_nearest_earlier_reading(self):
-        """The bug this pins: 'Now' returning MODIFY/no-data because FortyGuard has no
-        reading for the literal current instant yet, even though a reading a bit earlier
-        exists. The route should keep stepping back (bounded) rather than accepting the
-        first empty grid as the final answer."""
-        calls: list[datetime] = []
-
-        async def fake(self: Any, *, date_time: datetime, **kwargs: Any) -> tuple[str, Any]:
-            calls.append(date_time)
-            # Empty for the requested instant and one step back; real data two steps back.
-            heatmap = NO_READINGS if len(calls) < 3 else HOT
-            return f"act-{len(calls)}", heatmap
-
-        with (
-            patch.object(FortyGuardClient, "fetch_heatmap", fake),
-            agent_returns(decision()),  # peak_temperature=41.2, i.e. "data was found"
-        ):
-            response = self.post(self.client())
-
-        self.assertEqual(response.status_code, 200, response.text)
-        body = response.json()
-
-        # Stopped as soon as a step had data — did not exhaust the whole budget.
-        self.assertEqual(len(calls), 3)
-        step = make_settings().now_fallback_step_minutes
-        self.assertEqual(calls[1], calls[0] - timedelta(minutes=step))
-        self.assertEqual(calls[2], calls[0] - timedelta(minutes=2 * step))
-
-        # The winning call's activity_id is what ships, and the card says the timestamp
-        # actually used differs from what was requested.
-        self.assertEqual(body["activity_id"], "act-3")
-        self.assertIn("most recent available reading", body["reason"])
-        self.assertIn("2h earlier", body["reason"])
-
-    def test_a_step_back_that_finds_nothing_stays_honest_about_no_data(self):
-        """Every step comes back empty: the fallback budget is exhausted, and the response
-        must still read as genuine "no data" — not falsely claim an earlier reading was
-        used when none was."""
-        calls: list[datetime] = []
-
-        async def fake(self: Any, *, date_time: datetime, **kwargs: Any) -> tuple[str, Any]:
-            calls.append(date_time)
-            return f"act-{len(calls)}", NO_READINGS
-
-        no_data_decision = decision(
-            risk_level="MEDIUM",
-            decision="MODIFY",
-            peak_temperature=None,
-            average_temperature=None,
-            reason=UNKNOWN_REASON,
-        )
-        with (
-            patch.object(FortyGuardClient, "fetch_heatmap", fake),
-            agent_returns(no_data_decision),
-        ):
-            response = self.post(self.client())
-
-        self.assertEqual(response.status_code, 200, response.text)
-        body = response.json()
-
-        settings = make_settings()
-        self.assertEqual(len(calls), settings.now_fallback_max_steps + 1)
-        self.assertIsNone(body["peak_temperature"])
-        # Unchanged, genuine no-data message — no false "found it earlier" claim.
-        self.assertEqual(body["reason"], UNKNOWN_REASON)
 
     def test_the_response_carries_the_history_metadata_the_dashboard_needs(self):
         fg, _ = fortyguard_returns(HOT)

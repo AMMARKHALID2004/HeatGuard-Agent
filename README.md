@@ -130,3 +130,110 @@ renders `—`.
 `backend/.env`. Nothing secret belongs in `frontend/`, where every `NEXT_PUBLIC_*` value is
 visible in the browser. `.gitignore` excludes `.env` files and keeps the `.env.example`
 templates.
+
+## What doesn't work yet
+
+- **The heatmap parser doesn't yet read the real response shape.** We assumed a `cells`
+  list of `{"temperature": ...}` objects (that's what the unit tests mock). A live probe
+  (`scripts/probe_fortyguard.py`) against the real API confirms the actual response nests
+  per-tile temperatures at `map_data.features[].properties.{average_temperature,
+  min_temperature, max_temperature}`, with aggregate stats at
+  `stats_data.temperature_stats.{minimum, maximum, mean, standard_deviation}` — see the
+  captured example below. `app/services/heatmap.py` doesn't look in either place yet, so
+  it currently reports zero readings on every real request, mocked tests notwithstanding.
+  This is the next fix, not a hypothetical.
+- **Which FortyGuard analysis mode we're hitting is unconfirmed.** FortyGuard's docs
+  describe multiple analysis layers (snapshot / exceedance / persistence); we're calling
+  `/v1/heatmap` and treating the result as a snapshot of point temperatures, but we haven't
+  gotten confirmation from FortyGuard that this is the correct layer for a "is it too hot to
+  work right now" decision.
+- **No persistence.** Evaluation history lives in frontend memory for the browser session
+  only — it resets on page reload or backend restart. There's no database.
+
+## A real FortyGuard API call
+
+Captured live with `cd backend && uv run python scripts/probe_fortyguard.py --offsets "" ` against
+the demo AOI (Lower Manhattan) at **2024-07-15, 14:00** — the timestamp validated in the
+original n8n prototype.
+
+**Request:** `POST https://api.fortyguard.com/v1/heatmap` (header `api-key: <FORTYGUARD_API_KEY>`)
+```json
+{
+  "polygon_aoi": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-74.017, 40.705], [-74.003, 40.705],
+            [-74.003, 40.718], [-74.017, 40.718],
+            [-74.017, 40.705]
+          ]]
+        }
+      }
+    ]
+  },
+  "date_time": { "start_date": "2024-07-15", "start_time": "14:00", "filter_type": 1 },
+  "granularity": 100
+}
+```
+
+**Response** (trimmed — the real payload has one `Feature` per grid tile; three shown of many):
+```json
+{
+  "data": {
+    "status": "Completed",
+    "result": {
+      "map_data": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "id": "129",
+            "type": "Feature",
+            "properties": {
+              "tile_id": 129,
+              "average_temperature": 31.8891,
+              "min_temperature": 31.8891,
+              "max_temperature": 31.8891
+            },
+            "geometry": { "type": "Polygon", "coordinates": ["... tile boundary ..."] }
+          },
+          {
+            "id": "137",
+            "type": "Feature",
+            "properties": {
+              "tile_id": 137,
+              "average_temperature": 33.1396,
+              "min_temperature": 33.1396,
+              "max_temperature": 33.1396
+            },
+            "geometry": { "type": "Polygon", "coordinates": ["... tile boundary ..."] }
+          }
+        ]
+      },
+      "stats_data": {
+        "temperature_stats": {
+          "minimum": 31.887,
+          "maximum": 33.1424,
+          "mean": 32.2552,
+          "standard_deviation": 0.4149
+        },
+        "temperature_frequency": { "x_axis": [32.0, 33.0], "y_axis": [111, 39] }
+      }
+    }
+  }
+}
+```
+
+Peak 33.14°C / average 32.26°C over this AOI falls in the **Mixed-Humid MEDIUM band**
+(30–33°C → `MODIFY`), so this request would drive a real `MODIFY` decision end to end.
+
+This also confirms the schema mismatch flagged above with real numbers instead of an empty
+result: temperatures live at `map_data.features[].properties.{average_temperature,
+min_temperature, max_temperature}` and `stats_data.temperature_stats.{minimum, maximum,
+mean, standard_deviation}` — not the `cells` array the parser and its unit tests currently
+assume. `app/services/heatmap.py` needs to read this shape before peak/average
+temperatures will ever populate from a real request.

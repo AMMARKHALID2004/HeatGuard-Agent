@@ -42,18 +42,6 @@ class Settings(BaseSettings):
     # dashboard button spins for minutes.
     agent_deadline_seconds: float = 45.0
 
-    # --- "No readings" fallback for near-real-time requests ---
-    # FortyGuard confirmed (2026-08) the API itself is queryable 24/7 for any date/time from
-    # 2021-01-01 up to now+12h — there is no "certain hours only" restriction on *access*.
-    # But the underlying data is satellite-derived, and a request for the literal current
-    # minute can still land in a gap between passes before that imagery has been processed,
-    # even though the request itself is perfectly valid. Rather than surface that gap as a
-    # false "no data" MODIFY floor, retry the *same* AOI a little further back in time — real
-    # FortyGuard data, just the most recent instant it actually has a reading for.
-    # Set NOW_FALLBACK_MAX_STEPS=0 to disable and go back to failing fast on an empty grid.
-    now_fallback_step_minutes: float = 60.0
-    now_fallback_max_steps: int = 3
-
     # --- CORS: comma-separated list of allowed dashboard origins ---
     cors_allow_origins: str = "http://localhost:3000"
 
